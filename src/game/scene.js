@@ -37,6 +37,50 @@ function lowPolyTree(x, z) {
   return group
 }
 
+// A tropical palm — leaning segmented trunk + a fan of drooping fronds —
+// for the survival island's beach ring, alongside the pine-style lowPolyTree
+// used inland (see buildForest).
+function buildPalmTree(x, z) {
+  const group = new THREE.Group()
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x9a7b4f, flatShading: true })
+  const frondMat = new THREE.MeshStandardMaterial({ color: 0x4a9d4f, flatShading: true })
+  const nutMat = new THREE.MeshStandardMaterial({ color: 0x5c3a1e, flatShading: true })
+
+  // Stacked, progressively offset trunk segments lean the whole tree over
+  // instead of standing dead straight, the way a real palm does.
+  const segCount = 4
+  let offsetX = 0
+  for (let i = 0; i < segCount; i++) {
+    const seg = new THREE.Mesh(new THREE.CylinderGeometry(0.16 - i * 0.02, 0.2 - i * 0.02, 1.1, 6), trunkMat)
+    seg.position.set(offsetX, 0.55 + i * 1.05, 0)
+    seg.castShadow = true
+    group.add(seg)
+    offsetX -= 0.13
+  }
+
+  const crownY = 0.55 + segCount * 1.05
+  const crownX = offsetX
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2
+    const frond = new THREE.Mesh(new THREE.ConeGeometry(0.2, 1.9, 4), frondMat)
+    frond.position.set(crownX + Math.cos(a) * 0.5, crownY - 0.15, Math.sin(a) * 0.5)
+    frond.rotation.set(Math.PI / 2 - 0.3, a, 0)
+    frond.scale.set(1, 1, 0.5)
+    frond.castShadow = true
+    group.add(frond)
+  }
+  for (let i = 0; i < 2; i++) {
+    const nut = new THREE.Mesh(new THREE.SphereGeometry(0.14, 6, 5), nutMat)
+    nut.position.set(crownX + (Math.random() - 0.5) * 0.3, crownY - 0.3, (Math.random() - 0.5) * 0.3)
+    group.add(nut)
+  }
+
+  group.position.set(x, 0, z)
+  group.scale.setScalar(0.85 + Math.random() * 0.4)
+  group.rotation.y = Math.random() * Math.PI * 2
+  return group
+}
+
 function lowPolyRock(x, z, scale = 1) {
   const geo = new THREE.DodecahedronGeometry(0.6 * scale, 0)
   const mat = new THREE.MeshStandardMaterial({ color: 0x7a7a72, flatShading: true })
@@ -342,6 +386,183 @@ function buildRiver(points, width = 3.2) {
   return group
 }
 
+// A small rocky bluff with a terraced waterfall tumbling down its face into
+// a splash pool — deliberately its own free-standing outcrop (not literally
+// carved into buildMountain's cone stack) placed on flat ground well clear
+// of the foothill's raised footprint (see getSurvivalGroundHeight below —
+// its blend zone reaches out to radius 24 around the foothill center), so
+// it can use the same flat GRASS_TOP baseline as the lake/river above
+// without re-triggering the "solid raised disc hides what's under it"
+// pitfall those two were built around. Reads as "runoff from the mountain"
+// by proximity to the peak/river even though it isn't mesh-fused to either.
+function buildWaterfallBluff(x, z) {
+  const group = new THREE.Group()
+  const rockMat = new THREE.MeshStandardMaterial({ color: 0x716c60, flatShading: true })
+  const rockMat2 = new THREE.MeshStandardMaterial({ color: 0x8a8578, flatShading: true })
+  const waterMat = new THREE.MeshStandardMaterial({
+    color: 0x3f9fce,
+    flatShading: true,
+    roughness: 0.3,
+    transparent: true,
+    opacity: 0.85,
+  })
+  const foamMat = new THREE.MeshStandardMaterial({ color: 0xeaf6fb, flatShading: true, transparent: true, opacity: 0.9 })
+
+  // The cliff face itself — a cluster of stacked boulders (same language as
+  // buildCave) rather than a single mound, so it reads as a rock face. Each
+  // one is pulled well back in Z (their scaled radius alone can reach ~1.8
+  // units past their center) so the whole cluster's FRONT face lines up
+  // near z=0, leaving the water chute below entirely clear of solid rock —
+  // an earlier version centered the boulders on the chute itself and the
+  // water rendered completely hidden inside them.
+  const boulders = [
+    [0, 2.4, -1.9, 2.2, 2.6, 1.8, rockMat],
+    [-1.7, 1.5, -1.5, 1.6, 1.7, 1.4, rockMat2],
+    [1.8, 1.7, -1.5, 1.7, 1.8, 1.4, rockMat],
+    [0.3, 4.2, -2.2, 1.5, 1.6, 1.2, rockMat2],
+  ]
+  for (const [dx, dy, dz, sx, sy, sz, mat] of boulders) {
+    const b = new THREE.Mesh(new THREE.DodecahedronGeometry(1, 0), mat)
+    b.position.set(dx, dy, dz)
+    b.scale.set(sx, sy, sz)
+    b.rotation.set(Math.random() * 2, Math.random() * 2, Math.random() * 2)
+    b.castShadow = true
+    b.receiveShadow = true
+    group.add(b)
+  }
+
+  // Terraced cascade down the cliff's front face — upright water "sheets"
+  // stepping down in Z (toward the viewer) rather than one rotated diagonal
+  // slab, so no rotation math is needed to keep each segment lined up.
+  const steps = 4
+  const yTop = 4.6
+  const yBottom = GRASS_TOP + 0.65
+  const zTop = 0.1
+  const zBottom = 2.6
+  for (let i = 0; i < steps; i++) {
+    const t0 = i / steps
+    const t1 = (i + 1) / steps
+    const y0 = THREE.MathUtils.lerp(yTop, yBottom, t0)
+    const y1 = THREE.MathUtils.lerp(yTop, yBottom, t1)
+    const zPos = THREE.MathUtils.lerp(zTop, zBottom, (t0 + t1) / 2)
+    const jitterX = (Math.random() - 0.5) * 0.3
+
+    const sheet = new THREE.Mesh(new THREE.BoxGeometry(1.1, y0 - y1 + 0.3, 0.3), waterMat)
+    sheet.position.set(jitterX, (y0 + y1) / 2, zPos)
+    group.add(sheet)
+
+    const ledge = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.14, 0.6), foamMat)
+    ledge.position.set(jitterX, y1, zPos + 0.2)
+    group.add(ledge)
+  }
+
+  const pool = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 1.9, 0.18, 14), waterMat)
+  pool.position.set(0, yBottom, zBottom + 0.6)
+  group.add(pool)
+  const foamRing = new THREE.Mesh(new THREE.CylinderGeometry(2.0, 2.2, 0.1, 14), foamMat)
+  foamRing.position.set(0, yBottom - 0.02, zBottom + 0.6)
+  group.add(foamRing)
+
+  for (let i = 0; i < 3; i++) {
+    const a = Math.random() * Math.PI * 2
+    const r = 2.6 + Math.random() * 1.4
+    group.add(lowPolyRock(Math.cos(a) * r, zBottom + 0.6 + Math.sin(a) * r * 0.6, 0.3 + Math.random() * 0.3))
+  }
+
+  group.position.set(x, 0, z)
+  return group
+}
+
+// A cluster of raised beach huts (thatched roof + stilts) with a couple of
+// canoes pulled up on the sand — the survival island's own tiny coastal
+// village, near the spawn beach/river mouth. Purely atmospheric (no new
+// interaction — sleeping/eating/drinking still route through the cave/
+// lake/river as before).
+function buildVillage(x, z) {
+  const group = new THREE.Group()
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0xc9a06a, flatShading: true })
+  const roofMat = new THREE.MeshStandardMaterial({ color: 0x8a5a34, flatShading: true })
+  const postMat = new THREE.MeshStandardMaterial({ color: 0x5c3a1e, flatShading: true })
+  const hullMat = new THREE.MeshStandardMaterial({ color: 0xb5432c, flatShading: true })
+
+  const huts = [
+    [-4, 2, 0.3],
+    [3.5, 3.5, -0.4],
+    [0, 6.5, 0.15],
+    [-3.5, 8, -0.2],
+  ]
+  for (const [dx, dz, rot] of huts) {
+    const hut = new THREE.Group()
+    const walls = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.5, 2.2), wallMat)
+    walls.position.y = GRASS_TOP + 0.75
+    walls.castShadow = true
+    walls.receiveShadow = true
+    hut.add(walls)
+
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(1.9, 1.3, 4), roofMat)
+    roof.position.y = GRASS_TOP + 1.5 + 0.65
+    roof.rotation.y = Math.PI / 4
+    roof.castShadow = true
+    hut.add(roof)
+
+    for (const [px, pz] of [
+      [-0.9, -0.9],
+      [0.9, -0.9],
+      [-0.9, 0.9],
+      [0.9, 0.9],
+    ]) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.7, 6), postMat)
+      post.position.set(px, GRASS_TOP + 0.35, pz)
+      hut.add(post)
+    }
+
+    hut.position.set(dx, 0, dz)
+    hut.rotation.y = rot
+    group.add(hut)
+  }
+
+  for (const [dx, dz, rot] of [
+    [6, 1, 0.4],
+    [5.4, -1.8, -0.6],
+  ]) {
+    const canoe = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.4, 0.4, 6, 1, false), hullMat)
+    canoe.rotation.z = Math.PI / 2
+    canoe.scale.set(1, 1, 2.4)
+    canoe.position.set(dx, GRASS_TOP + 0.15, dz)
+    canoe.rotation.y = rot
+    canoe.castShadow = true
+    group.add(canoe)
+  }
+
+  group.position.set(x, 0, z)
+  return group
+}
+
+// A simple sand path strung between waypoints, sitting just above
+// GRASS_TOP — same flat-baseline convention as the lake/river banks — for
+// the well-trodden spawn-to-camp routes.
+function buildPath(points, width = 1.7) {
+  const group = new THREE.Group()
+  const pathMat = new THREE.MeshStandardMaterial({ color: 0xdec27a, flatShading: true, roughness: 1 })
+  for (let i = 0; i < points.length - 1; i++) {
+    const [x1, z1] = points[i]
+    const [x2, z2] = points[i + 1]
+    const dx = x2 - x1
+    const dz = z2 - z1
+    const len = Math.hypot(dx, dz)
+    const angle = Math.atan2(dx, dz)
+    const cx = (x1 + x2) / 2
+    const cz = (z1 + z2) / 2
+
+    const seg = new THREE.Mesh(new THREE.BoxGeometry(width, 0.05, len + 0.3), pathMat)
+    seg.position.set(cx, GRASS_TOP + 0.06, cz)
+    seg.rotation.y = angle
+    seg.receiveShadow = true
+    group.add(seg)
+  }
+  return group
+}
+
 // The island itself: a bigger, differently-shaped landmass than the round
 // home island, plus every biome piece above assembled onto it. Sits far
 // out in open water (see SURVIVAL_ISLAND_CENTER) so it never crowds the
@@ -382,11 +603,27 @@ function buildSurvivalIsland(center) {
   group.add(buildForest(-22, 3, 26))
   group.add(buildLake(22, 7))
   group.add(buildRiver([[4, -25], [7, -11], [3, 3], [6, 17], [4, 29]]))
+  // A little coastal village near the spawn beach/river mouth, and a
+  // waterfall bluff between the foothill and the lake — see each builder's
+  // own comment for why they're placed where they are.
+  group.add(buildVillage(14, 26))
+  group.add(buildWaterfallBluff(13, -6))
+  // Sand paths along the well-trodden spawn→camp routes.
+  group.add(buildPath([[0, 30], [8, 28], [14, 26]]))
+  group.add(buildPath([[0, 30], [10, 20], [18, 12], [22, 7]]))
 
   for (let i = 0; i < 9; i++) {
     const a = Math.random() * Math.PI * 2
     const r = 25 + Math.random() * 6
     group.add(lowPolyRock(Math.cos(a) * r, 22 + Math.sin(a) * 6, 0.4 + Math.random() * 0.5))
+  }
+
+  // Palm trees ringing the southern/eastern beach (the mountain dominates
+  // the north, so they're kept out of that arc).
+  for (let i = 0; i < 13; i++) {
+    const a = -Math.PI * 0.4 + Math.random() * Math.PI * 1.5
+    const r = 26 + Math.random() * 4
+    group.add(buildPalmTree(Math.cos(a) * r, Math.sin(a) * r * 1.3))
   }
 
   // Lifted clear of the waterline — see SHORE_LIFT.
