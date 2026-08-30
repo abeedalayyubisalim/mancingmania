@@ -1,10 +1,19 @@
-// Simple gear store — players spend their fishing points on equipment that
-// gives small gameplay bonuses, plus a couple of cosmetic items. Ownership
-// is stored per-browser in localStorage (like settings), since the points
-// "wallet" itself is already tracked client-side too.
+// Gear store. Two kinds of items:
+//  - COSMETIC_ITEMS: bought once, flavor only (shown as a HUD badge).
+//  - GEAR_LINES: upgradeable equipment (kail/umpan/jaring) — each line has
+//    several tiers; buying a tier replaces the previous one and grants
+//    that tier's (higher) bonus, it doesn't stack with earlier tiers.
+//
+// Ownership is cached in this browser's localStorage for instant access
+// during gameplay (bonus lookups happen every cast), but is also written
+// to the shared Supabase `inventory` table (same table fish catches use,
+// jenis = "<line>_t<tier>" for gear or the item id for cosmetics) so a
+// player's gear shows up again after logging in elsewhere, and so other
+// players can see it on that player's public profile. applySyncedInventory
+// below reconciles the local cache with whatever Supabase returns.
 const STORAGE_KEY = 'fishing-fps-store'
 
-export const STORE_ITEMS = [
+export const COSMETIC_ITEMS = [
   {
     id: 'hat_nelayan',
     name: 'Topi Nelayan',
@@ -12,25 +21,6 @@ export const STORE_ITEMS = [
     price: 80,
     minLevel: 1,
     desc: 'Aksesori gaya — dipajang di sebelah nama kamu di HUD.',
-    effect: { cosmetic: true },
-  },
-  {
-    id: 'hook_silver',
-    name: 'Kail Perak',
-    emoji: '🪝',
-    price: 150,
-    minLevel: 1,
-    desc: 'Ikan tingkat uncommon/rare sedikit lebih sering muncul.',
-    effect: { rareBonus: 0.12 },
-  },
-  {
-    id: 'bait_super',
-    name: 'Umpan Super',
-    emoji: '🪱',
-    price: 120,
-    minLevel: 2,
-    desc: 'Ikan menggigit lebih cepat setelah kail dilempar.',
-    effect: { biteSpeed: 0.3 },
   },
   {
     id: 'vest_pro',
@@ -39,34 +29,47 @@ export const STORE_ITEMS = [
     price: 220,
     minLevel: 3,
     desc: 'Aksesori gaya lain buat pemancing berpengalaman.',
-    effect: { cosmetic: true },
+  },
+]
+
+export const GEAR_LINES = [
+  {
+    id: 'hook',
+    name: 'Kail',
+    emoji: '🪝',
+    tiers: [
+      { name: 'Kail Perak', price: 150, minLevel: 1, effect: { rareBonus: 0.12 }, desc: 'Ikan uncommon/rare sedikit lebih sering muncul.' },
+      { name: 'Kail Emas', price: 400, minLevel: 5, effect: { rareBonus: 0.28 }, desc: 'Ikan langka jauh lebih sering muncul.' },
+      { name: 'Kail Berlian', price: 900, minLevel: 10, effect: { rareBonus: 0.45 }, desc: 'Peluang ikan langka di titik maksimal.' },
+    ],
   },
   {
-    id: 'hook_gold',
-    name: 'Kail Emas',
-    emoji: '🎣',
-    price: 500,
-    minLevel: 5,
-    desc: 'Ikan langka jauh lebih sering muncul dibanding kail biasa.',
-    effect: { rareBonus: 0.28 },
+    id: 'bait',
+    name: 'Umpan',
+    emoji: '🪱',
+    tiers: [
+      { name: 'Umpan Super', price: 120, minLevel: 2, effect: { biteSpeed: 0.3 }, desc: 'Ikan menggigit lebih cepat setelah kail dilempar.' },
+      { name: 'Umpan Ajaib', price: 350, minLevel: 7, effect: { biteSpeed: 0.5 }, desc: 'Ikan menggigit jauh lebih cepat.' },
+    ],
   },
   {
-    id: 'net_lucky',
-    name: 'Jaring Keberuntungan',
+    id: 'net',
+    name: 'Jaring',
     emoji: '🍀',
-    price: 350,
-    minLevel: 6,
-    desc: 'Peluang mendapat Ikan Emas Legendaris meningkat.',
-    effect: { legendaryBonus: 0.6 },
+    tiers: [
+      { name: 'Jaring Keberuntungan', price: 350, minLevel: 6, effect: { legendaryBonus: 0.6 }, desc: 'Peluang Ikan Emas Legendaris meningkat.' },
+      { name: 'Jaring Dewa Laut', price: 800, minLevel: 12, effect: { legendaryBonus: 1.2 }, desc: 'Peluang Ikan Emas Legendaris meningkat drastis.' },
+    ],
   },
 ]
 
 function load() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? JSON.parse(raw) : { owned: [] }
+    const parsed = raw ? JSON.parse(raw) : {}
+    return { owned: parsed.owned ?? [], tiers: parsed.tiers ?? {} }
   } catch {
-    return { owned: [] }
+    return { owned: [], tiers: {} }
   }
 }
 
@@ -79,6 +82,8 @@ function save() {
     // Storage unavailable — purchases just won't persist this session.
   }
 }
+
+// ---- Cosmetics ------------------------------------------------------------
 
 export function isOwned(id) {
   return state.owned.includes(id)
@@ -95,26 +100,96 @@ export function markOwned(id) {
   }
 }
 
-function sumEffect(key) {
-  return STORE_ITEMS.filter((i) => isOwned(i.id)).reduce((sum, i) => sum + (i.effect[key] || 0), 0)
+// ---- Upgradeable gear -------------------------------------------------
+
+// 0 = no tier owned yet; 1 = first tier owned; 2 = second tier owned; etc.
+export function getGearTier(lineId) {
+  return state.tiers[lineId] ?? 0
+}
+
+export function setGearTier(lineId, tier) {
+  if (tier > getGearTier(lineId)) {
+    state.tiers[lineId] = tier
+    save()
+  }
+}
+
+function currentTierEffect(line) {
+  const tier = getGearTier(line.id)
+  if (tier <= 0) return {}
+  return line.tiers[tier - 1]?.effect ?? {}
 }
 
 export function getRareBonus() {
-  return sumEffect('rareBonus')
+  return GEAR_LINES.reduce((sum, line) => sum + (currentTierEffect(line).rareBonus || 0), 0)
 }
 
 export function getLegendaryBonus() {
-  return sumEffect('legendaryBonus')
+  return GEAR_LINES.reduce((sum, line) => sum + (currentTierEffect(line).legendaryBonus || 0), 0)
 }
 
 // Fraction (0..~0.7) shaved off the fish's bite-wait time.
 export function getBiteSpeedBonus() {
-  return Math.min(0.7, sumEffect('biteSpeed'))
+  const v = GEAR_LINES.reduce((sum, line) => sum + (currentTierEffect(line).biteSpeed || 0), 0)
+  return Math.min(0.7, v)
 }
 
 // First owned cosmetic item's name, for a small HUD badge — purely for
 // flavor, doesn't affect gameplay.
 export function getCosmeticBadge() {
-  const cosmetic = STORE_ITEMS.find((i) => i.effect.cosmetic && isOwned(i.id))
+  const cosmetic = COSMETIC_ITEMS.find((i) => isOwned(i.id))
   return cosmetic ? `${cosmetic.emoji} ${cosmetic.name}` : null
+}
+
+// ---- Supabase `inventory` row encoding for gear tiers ----------------
+
+export function gearJenisId(lineId, tier) {
+  return `${lineId}_t${tier}`
+}
+
+export function parseGearJenis(jenis) {
+  const m = /^(.+)_t(\d+)$/.exec(jenis)
+  if (!m) return null
+  const line = GEAR_LINES.find((l) => l.id === m[1])
+  if (!line) return null
+  return { lineId: m[1], tier: parseInt(m[2], 10) }
+}
+
+// Reconciles this browser's local gear/cosmetic cache with rows fetched
+// from Supabase (only ever raises tiers/adds ownership, never removes —
+// Supabase is the source of truth once you're logged in, but we don't
+// want a slow/failed fetch to wipe local progress).
+export function applySyncedInventory(rows) {
+  if (!rows || !rows.length) return
+  const maxTierByLine = {}
+  for (const row of rows) {
+    const jenis = row.jenis
+    if (COSMETIC_ITEMS.some((i) => i.id === jenis)) {
+      markOwned(jenis)
+      continue
+    }
+    const parsed = parseGearJenis(jenis)
+    if (parsed) maxTierByLine[parsed.lineId] = Math.max(maxTierByLine[parsed.lineId] ?? 0, parsed.tier)
+  }
+  for (const [lineId, tier] of Object.entries(maxTierByLine)) {
+    setGearTier(lineId, tier)
+  }
+}
+
+// Splits arbitrary inventory rows (any player's) into { cosmetics, gearTiers }
+// without touching this browser's own local cache — used to render another
+// player's public profile.
+export function summarizeGearRows(rows) {
+  const cosmetics = new Set()
+  const gearTiers = {}
+  for (const row of rows || []) {
+    const jenis = row.jenis
+    if (COSMETIC_ITEMS.some((i) => i.id === jenis)) {
+      cosmetics.add(jenis)
+      continue
+    }
+    const parsed = parseGearJenis(jenis)
+    if (parsed) gearTiers[parsed.lineId] = Math.max(gearTiers[parsed.lineId] ?? 0, parsed.tier)
+  }
+  return { cosmetics: [...cosmetics], gearTiers }
 }

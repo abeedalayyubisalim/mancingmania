@@ -378,3 +378,25 @@ export function pointsForWeight(fish, weightKg) {
   if (fish.junk) return 0
   return Math.max(1, Math.round(weightKg * fish.pointsPerKg))
 }
+
+const DIFFICULTY_BY_TIER = {
+  junk: 1,
+  common: 1,
+  uncommon: 2,
+  rare: 3,
+  'very-rare': 4,
+  legendary: 5,
+}
+
+// Higher-value fish demand a harder "follow the pattern" reeling
+// challenge: more successful taps needed, a faster-moving marker, and a
+// narrower target zone to hit it in.
+export function catchPatternFor(fish) {
+  const diff = DIFFICULTY_BY_TIER[fish.tier] ?? 1
+  return {
+    beats: 1 + diff,
+    beatDuration: Math.max(0.55, 1.5 - diff * 0.18),
+    zoneWidth: Math.max(0.14, 0.34 - diff * 0.045),
+    maxMisses: Math.max(2, 5 - diff),
+  }
+}

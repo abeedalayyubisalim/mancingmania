@@ -6,12 +6,12 @@ import { buildEnvironment } from './game/scene.js'
 import { Water } from './game/water.js'
 import { Player } from './game/player.js'
 import { Fishing } from './game/fishing.js'
-import { fetchProfile, syncPoints, fetchLeaderboard, addInventoryItem } from './supabase-client.js'
+import { fetchProfile, syncPoints, fetchLeaderboard, fetchInventory, addInventoryItem } from './supabase-client.js'
 import { PauseMenu } from './pause-menu.js'
 import { TouchControls } from './touch-controls.js'
 import { isTouchDevice } from './settings.js'
 import { recordCatch } from './collection.js'
-import { getCosmeticBadge } from './store.js'
+import { getCosmeticBadge, applySyncedInventory } from './store.js'
 import { getLevelInfo } from './leveling.js'
 import { loadLocalWallet, saveLocalWallet } from './wallet-storage.js'
 
@@ -26,9 +26,15 @@ async function main() {
   let totalPoints = 0
   let wallet = 0
   if (session?.user) {
-    const profile = await fetchProfile(session.user.id)
+    const [profile, inventoryRows] = await Promise.all([
+      fetchProfile(session.user.id),
+      fetchInventory(session.user.id),
+    ])
     totalPoints = profile.points
     wallet = profile.wallet
+    // Bring any gear/cosmetics bought on another device into this
+    // browser's local cache too, so bonuses apply immediately.
+    applySyncedInventory(inventoryRows)
   } else {
     const local = loadLocalWallet()
     totalPoints = local.points

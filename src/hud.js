@@ -17,6 +17,13 @@ export class Hud {
         <div id="status-text">Klik untuk mulai memancing</div>
         <div id="power-bar"><div id="power-fill"></div></div>
         <div id="reel-bar"><div id="reel-fill"></div></div>
+        <div id="pattern-box" class="hidden">
+          <div id="pattern-track">
+            <div id="pattern-zone"></div>
+            <div id="pattern-marker"></div>
+          </div>
+          <div id="pattern-info"></div>
+        </div>
       </div>
       <div id="catch-popup" class="hidden">
         <div id="catch-title"></div>
@@ -48,6 +55,10 @@ export class Hud {
     this.powerFill = root.querySelector('#power-fill')
     this.reelBar = root.querySelector('#reel-bar')
     this.reelFill = root.querySelector('#reel-fill')
+    this.patternBox = root.querySelector('#pattern-box')
+    this.patternZone = root.querySelector('#pattern-zone')
+    this.patternMarker = root.querySelector('#pattern-marker')
+    this.patternInfo = root.querySelector('#pattern-info')
     this.catchPopup = root.querySelector('#catch-popup')
     this.catchTitle = root.querySelector('#catch-title')
     this.catchPoints = root.querySelector('#catch-points')
@@ -102,6 +113,17 @@ export class Hud {
       this.reelFill.style.width = `${Math.round((opts.progress ?? 0) * 100)}%`
     } else if (opts.reset) {
       this.reelBar.classList.add('hidden')
+    }
+
+    if (opts.pattern) {
+      const p = opts.pattern
+      this.patternBox.classList.remove('hidden')
+      this.patternMarker.style.left = `${p.marker * 100}%`
+      this.patternZone.style.left = `${p.zoneStart * 100}%`
+      this.patternZone.style.width = `${p.zoneWidth * 100}%`
+      this.patternInfo.textContent = `Pola ${p.beat}/${p.totalBeats} · Meleset ${p.misses}/${p.maxMisses}`
+    } else if (opts.reset) {
+      this.patternBox.classList.add('hidden')
     }
   }
 

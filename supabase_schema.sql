@@ -16,6 +16,14 @@ create table if not exists public.leaderboard (
 -- store. Safe to run even if the column already exists.
 alter table public.leaderboard add column if not exists wallet numeric not null default 0;
 
+-- One-time fix if you already had players with points > 0 BEFORE the
+-- `wallet` column existed: the column defaults new/existing rows to 0,
+-- which left their wallet empty even though they'd already earned points.
+-- This backfills wallet = points for any row that looks un-initialized
+-- (wallet still 0 but points > 0). Safe to run more than once — it's a
+-- no-op once every wallet has been touched by real gameplay.
+update public.leaderboard set wallet = points where wallet = 0 and points > 0;
+
 alter table public.leaderboard enable row level security;
 
 -- Anyone (including anonymous visitors) can read the leaderboard — also

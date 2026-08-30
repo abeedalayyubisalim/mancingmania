@@ -6,11 +6,22 @@ import {
   fetchPublicProfileById,
   fetchPublicProfileByName,
   searchPlayers,
+  addInventoryItem,
 } from './supabase-client.js'
 import { FISH_TYPES } from './game/fish-data.js'
 import { fishIconSVG } from './fish-icon.js'
 import { getEntry, totalCaughtSpecies, groupInventoryRows } from './collection.js'
-import { STORE_ITEMS, isOwned, markOwned, getOwned } from './store.js'
+import {
+  COSMETIC_ITEMS,
+  GEAR_LINES,
+  isOwned,
+  markOwned,
+  getOwned,
+  getGearTier,
+  setGearTier,
+  gearJenisId,
+  summarizeGearRows,
+} from './store.js'
 import { getLevelInfo } from './leveling.js'
 
 const CAT_LINES = [
@@ -227,7 +238,44 @@ export class PauseMenu {
     const level = getLevelInfo(this.getTotalPoints()).level
     this.el.querySelector('#store-balance').textContent = `🪙 ${balance} · ⭐ Lv.${level}`
     const grid = this.el.querySelector('#store-grid')
-    grid.innerHTML = STORE_ITEMS.map((item) => {
+
+    // Upgradeable gear lines (kail/umpan/jaring) — each card shows the
+    // currently-owned tier and, if there's a next tier, an upgrade button.
+    const gearCards = GEAR_LINES.map((line) => {
+      const ownedTier = getGearTier(line.id)
+      const nextTier = line.tiers[ownedTier] // 0-based index === next tier to buy
+      const currentName = ownedTier > 0 ? line.tiers[ownedTier - 1].name : null
+      if (!nextTier) {
+        // Maxed out.
+        return `
+          <div class="store-card owned">
+            <div class="store-card-icon">${line.emoji}</div>
+            <div class="store-card-name">${escapeHtml(currentName)}</div>
+            <div class="store-card-desc">Level tertinggi tercapai!</div>
+            <div class="store-card-owned">✅ Maksimal</div>
+          </div>
+        `
+      }
+      const minLevel = nextTier.minLevel ?? 1
+      const levelOk = level >= minLevel
+      const affordable = balance >= nextTier.price
+      return `
+        <div class="store-card ${!levelOk ? 'locked' : ''}">
+          <div class="store-card-icon">${line.emoji}</div>
+          <div class="store-card-name">${escapeHtml(nextTier.name)}</div>
+          <div class="store-card-desc">${escapeHtml(nextTier.desc)}</div>
+          ${currentName ? `<div class="store-card-current">Sekarang: ${escapeHtml(currentName)}</div>` : ''}
+          ${
+            levelOk
+              ? `<button class="store-buy-btn" data-gear="${line.id}" ${affordable ? '' : 'disabled'}>${ownedTier > 0 ? 'Upgrade' : 'Beli'} — 🪙 ${nextTier.price}</button>`
+              : `<div class="store-card-locked">🔒 Perlu Level ${minLevel}</div>`
+          }
+        </div>
+      `
+    }).join('')
+
+    // One-off cosmetic items.
+    const cosmeticCards = COSMETIC_ITEMS.map((item) => {
       const owned = isOwned(item.id)
       const minLevel = item.minLevel ?? 1
       const levelOk = level >= minLevel
@@ -248,18 +296,40 @@ export class PauseMenu {
       `
     }).join('')
 
-    grid.querySelectorAll('.store-buy-btn').forEach((btn) => {
-      btn.addEventListener('click', () => this._buyItem(btn.dataset.item))
+    grid.innerHTML = gearCards + cosmeticCards
+
+    grid.querySelectorAll('.store-buy-btn[data-gear]').forEach((btn) => {
+      btn.addEventListener('click', () => this._buyGearTier(btn.dataset.gear))
+    })
+    grid.querySelectorAll('.store-buy-btn[data-item]').forEach((btn) => {
+      btn.addEventListener('click', () => this._buyCosmetic(btn.dataset.item))
     })
   }
 
-  _buyItem(itemId) {
-    const item = STORE_ITEMS.find((i) => i.id === itemId)
+  _buyGearTier(lineId) {
+    const line = GEAR_LINES.find((l) => l.id === lineId)
+    if (!line) return
+    const ownedTier = getGearTier(lineId)
+    const nextTier = line.tiers[ownedTier]
+    if (!nextTier) return // already maxed
+    const level = getLevelInfo(this.getTotalPoints()).level
+    if (level < (nextTier.minLevel ?? 1)) return
+    if (!this.spendScore(nextTier.price)) return
+    const newTier = ownedTier + 1
+    setGearTier(lineId, newTier)
+    if (this.userId) addInventoryItem(this.userId, gearJenisId(lineId, newTier)).catch(() => {})
+    this.onStoreChange?.()
+    this._renderStore()
+  }
+
+  _buyCosmetic(itemId) {
+    const item = COSMETIC_ITEMS.find((i) => i.id === itemId)
     if (!item || isOwned(itemId)) return
     const level = getLevelInfo(this.getTotalPoints()).level
     if (level < (item.minLevel ?? 1)) return
     if (!this.spendScore(item.price)) return
     markOwned(itemId)
+    if (this.userId) addInventoryItem(this.userId, itemId).catch(() => {})
     this.onStoreChange?.()
     this._renderStore()
   }
@@ -271,14 +341,13 @@ export class PauseMenu {
     const body = this.el.querySelector('#profile-body')
     body.innerHTML = '<p class="gallery-status">Memuat profil...</p>'
 
-    let username, totalPoints, wallet, inventoryRows, gearOwned
+    let username, totalPoints, wallet, targetUserId
 
     if (isSelf) {
       username = this.username
       totalPoints = this.getTotalPoints()
       wallet = this.getScore()
-      inventoryRows = this.userId ? await fetchInventory(this.userId) : null
-      gearOwned = getOwned()
+      targetUserId = this.userId
     } else {
       const profile = targetId
         ? await fetchPublicProfileById(targetId)
@@ -290,11 +359,13 @@ export class PauseMenu {
       username = profile.name
       totalPoints = profile.points ?? 0
       wallet = null
-      inventoryRows = await fetchInventory(profile.id)
-      gearOwned = null
+      targetUserId = profile.id
     }
 
-    const grouped = inventoryRows ? groupInventoryRows(inventoryRows) : null
+    const inventoryRows = targetUserId ? await fetchInventory(targetUserId) : null
+    const fishIds = new Set(FISH_TYPES.map((f) => f.id))
+    const fishRows = inventoryRows ? inventoryRows.filter((r) => fishIds.has(r.jenis)) : null
+    const grouped = fishRows ? groupInventoryRows(fishRows) : null
     const caughtCount = grouped ? Object.keys(grouped).length : isSelf ? totalCaughtSpecies() : 0
     const totalSpecies = FISH_TYPES.length
     const info = getLevelInfo(totalPoints)
@@ -307,19 +378,37 @@ export class PauseMenu {
       ? caughtFish.map((f) => `<div class="profile-mini-item" title="${escapeHtml(f.name)}">${fishIconSVG(f, 30)}</div>`).join('')
       : '<p class="gallery-status">Belum ada koleksi ikan.</p>'
 
-    const gearHtml =
-      gearOwned !== null
-        ? gearOwned.length
-          ? gearOwned
-              .map((id) => {
-                const item = STORE_ITEMS.find((i) => i.id === id)
-                return item
-                  ? `<div class="profile-mini-item" title="${escapeHtml(item.name)}">${item.emoji}</div>`
-                  : ''
-              })
-              .join('')
-          : '<p class="gallery-status">Belum ada item toko.</p>'
-        : null
+    // Gear/cosmetics: for the logged-in owner, use the live local cache
+    // (kept in sync with Supabase on login + every purchase); otherwise
+    // derive it straight from that player's public inventory rows.
+    let cosmeticIds, gearTiers
+    if (inventoryRows) {
+      const summary = summarizeGearRows(inventoryRows)
+      cosmeticIds = summary.cosmetics
+      gearTiers = summary.gearTiers
+    } else if (isSelf) {
+      cosmeticIds = getOwned()
+      gearTiers = Object.fromEntries(GEAR_LINES.map((l) => [l.id, getGearTier(l.id)]))
+    } else {
+      cosmeticIds = []
+      gearTiers = {}
+    }
+
+    const gearItems = [
+      ...GEAR_LINES.filter((l) => (gearTiers[l.id] ?? 0) > 0).map((l) => {
+        const tier = gearTiers[l.id]
+        return { emoji: l.emoji, name: l.tiers[tier - 1]?.name ?? l.name }
+      }),
+      ...cosmeticIds
+        .map((id) => COSMETIC_ITEMS.find((i) => i.id === id))
+        .filter(Boolean)
+        .map((i) => ({ emoji: i.emoji, name: i.name })),
+    ]
+    const gearHtml = gearItems.length
+      ? gearItems
+          .map((i) => `<div class="profile-mini-item" title="${escapeHtml(i.name)}">${i.emoji}</div>`)
+          .join('')
+      : '<p class="gallery-status">Belum ada item toko.</p>'
 
     body.innerHTML = `
       <div class="profile-header">
@@ -338,8 +427,8 @@ export class PauseMenu {
       </div>
       <h4>Koleksi Ikan</h4>
       <div class="profile-mini-grid">${speciesGrid}</div>
-      ${gearHtml !== null ? `<h4>Inventaris</h4><div class="profile-mini-grid">${gearHtml}</div>` : ''}
-      ${!isSelf ? '<p class="profile-note">Item toko pemain lain belum tersinkron online, jadi belum bisa ditampilkan di sini.</p>' : ''}
+      <h4>Inventaris</h4>
+      <div class="profile-mini-grid">${gearHtml}</div>
     `
   }
 

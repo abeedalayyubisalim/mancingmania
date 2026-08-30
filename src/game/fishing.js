@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { rollFish, rollWeight, pointsForWeight } from './fish-data.js'
+import { rollFish, rollWeight, pointsForWeight, catchPatternFor } from './fish-data.js'
 import { getRareBonus, getLegendaryBonus, getBiteSpeedBonus } from '../store.js'
 
 const STATE = {
@@ -15,9 +15,7 @@ const MAX_CHARGE_TIME = 1.4 // seconds to reach full power
 const MAX_CAST_DIST = 14
 const MIN_CAST_DIST = 4
 const BITE_WINDOW = 0.85
-const REEL_FILL_RATE = 0.42 // per second while holding
-const REEL_DECAY_RATE = 0.18 // per second while not holding
-const REEL_TIMEOUT = 16
+const REEL_TIMEOUT = 22
 
 export class Fishing {
   constructor({ scene, camera, player, water, domElement, onStatus, onCatch, onMiss }) {
@@ -93,6 +91,8 @@ export class Fishing {
       this._setStatus('Mengisi tenaga lemparan...', { power: 0 })
     } else if (this.state === STATE.BITE) {
       this._hookFish()
+    } else if (this.state === STATE.REELING) {
+      this._tryTapPattern()
     }
   }
 
@@ -140,11 +140,60 @@ export class Fishing {
     const base = rollFish(this.power, getRareBonus(), getLegendaryBonus())
     const weight = rollWeight(base)
     this.currentFish = { ...base, weight, points: pointsForWeight(base, weight) }
-    this.state = STATE.REELING
-    this.reelProgress = 0.18
+    this.pattern = catchPatternFor(this.currentFish)
+    this.currentBeat = 0
+    this.misses = 0
+    this.reelProgress = 0
     this._reelTimer = 0
-    this._nextStruggle = 1 + Math.random() * 1.5
-    this._setStatus(`Tersangkut! Tahan klik untuk menggulung "${this.currentFish.name}".`, { reeling: true, progress: this.reelProgress })
+    this._beatT = 0
+    this._beatDir = 1
+    this._zoneStart = Math.random() * (1 - this.pattern.zoneWidth)
+    this.state = STATE.REELING
+    this._setStatus(`Tersangkut! Ikuti pola untuk menggulung "${this.currentFish.name}".`, {
+      reeling: true,
+      progress: this.reelProgress,
+      pattern: this._patternUiState(),
+    })
+  }
+
+  _patternUiState() {
+    return {
+      marker: this._beatT,
+      zoneStart: this._zoneStart,
+      zoneWidth: this.pattern.zoneWidth,
+      beat: this.currentBeat,
+      totalBeats: this.pattern.beats,
+      misses: this.misses,
+      maxMisses: this.pattern.maxMisses,
+    }
+  }
+
+  _nextBeat() {
+    this._beatT = 0
+    this._beatDir = 1
+    this._zoneStart = Math.random() * (1 - this.pattern.zoneWidth)
+  }
+
+  // Called on every tap/click while reeling — checks whether the marker
+  // was inside the target zone at this instant.
+  _tryTapPattern() {
+    if (this.state !== STATE.REELING) return
+    const inZone = this._beatT >= this._zoneStart && this._beatT <= this._zoneStart + this.pattern.zoneWidth
+    if (inZone) {
+      this.currentBeat++
+      this._hitFlash = 0.25
+      if (this.currentBeat >= this.pattern.beats) {
+        this._catchFish()
+        return
+      }
+      this._nextBeat()
+    } else {
+      this.misses++
+      this._missFlash = 0.25
+      if (this.misses > this.pattern.maxMisses) {
+        this._fishEscapes('Polanya meleset terus, ikan lepas!')
+      }
+    }
   }
 
   _fishEscapes(reason) {
@@ -211,27 +260,33 @@ export class Fishing {
       p.y = this.water.heightAt(p.x, p.z, elapsed) + Math.sin(elapsed * 25) * 0.08
 
       this._reelTimer += dt
-      this._nextStruggle -= dt
-      if (this._nextStruggle <= 0) {
-        this.reelProgress -= 0.16
-        this._nextStruggle = 1 + Math.random() * 1.8
+      if (this._hitFlash > 0) this._hitFlash -= dt
+      if (this._missFlash > 0) this._missFlash -= dt
+
+      // Marker sweeps back and forth across the bar (ping-pong).
+      this._beatT += (this._beatDir * dt) / this.pattern.beatDuration
+      if (this._beatT >= 1) {
+        this._beatT = 1
+        this._beatDir = -1
+      } else if (this._beatT <= 0) {
+        this._beatT = 0
+        this._beatDir = 1
       }
 
-      this.reelProgress += (this.holding ? REEL_FILL_RATE : -REEL_DECAY_RATE) * dt
-      this.reelProgress = THREE.MathUtils.clamp(this.reelProgress, 0, 1)
+      this.reelProgress = this.currentBeat / this.pattern.beats
 
       // Slowly pull the bobber toward the player while reeling.
       const rodTip = this.player.getRodTipWorld()
       p.x = THREE.MathUtils.lerp(p.x, rodTip.x, dt * 0.5)
       p.z = THREE.MathUtils.lerp(p.z, rodTip.z, dt * 0.5)
 
-      this._setStatus(
-        this.holding ? 'Menggulung...' : 'Ikan menarik balik! Tahan klik!',
-        { reeling: true, progress: this.reelProgress }
-      )
+      this._setStatus('Tekan tepat saat penanda ada di zona hijau!', {
+        reeling: true,
+        progress: this.reelProgress,
+        pattern: this._patternUiState(),
+      })
 
-      if (this.reelProgress >= 1) this._catchFish()
-      else if (this.reelProgress <= 0 || this._reelTimer > REEL_TIMEOUT) this._fishEscapes('Ikan lepas!')
+      if (this._reelTimer > REEL_TIMEOUT) this._fishEscapes('Waktu habis, ikan lepas!')
     }
 
     // Keep the line drawn from rod tip to bobber whenever it's out.
@@ -241,9 +296,10 @@ export class Fishing {
       this.line.geometry.setFromPoints(pts)
     }
 
-    // Reel wheel spins while actively reeling.
+    // Reel wheel spins while actively reeling, with a little kick on a hit.
     if (this.player.reel) {
-      this.player.reel.rotation.z += (this.state === STATE.REELING && this.holding ? 12 : 1) * dt
+      const kick = this._hitFlash > 0 ? 14 : 0
+      this.player.reel.rotation.z += (this.state === STATE.REELING ? 4 + kick : 1) * dt
     }
   }
 
