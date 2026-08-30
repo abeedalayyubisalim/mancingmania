@@ -86,3 +86,38 @@ drop policy if exists "Players can add to their own inventory" on public.invento
 create policy "Players can add to their own inventory"
   on public.inventory for insert
   with check (auth.uid()::text = user_id);
+
+-- ---------------------------------------------------------------------------
+-- `friends` — a player's personal follow list (used for the Teman menu and
+-- to show which of your friends are currently online). One-directional: you
+-- adding someone as a friend doesn't require them to accept, same as
+-- "following" on many social apps. `friend_name` is cached at add-time so
+-- the list renders without an extra lookup.
+-- ---------------------------------------------------------------------------
+
+create table if not exists public.friends (
+  user_id text not null,
+  friend_id text not null,
+  friend_name text not null,
+  created_at timestamptz not null default now(),
+  primary key (user_id, friend_id)
+);
+
+alter table public.friends enable row level security;
+
+-- A player can only see, add to, and remove from their OWN friends list —
+-- unlike leaderboard/inventory this one isn't public.
+drop policy if exists "Players can view their own friends list" on public.friends;
+create policy "Players can view their own friends list"
+  on public.friends for select
+  using (auth.uid()::text = user_id);
+
+drop policy if exists "Players can add to their own friends list" on public.friends;
+create policy "Players can add to their own friends list"
+  on public.friends for insert
+  with check (auth.uid()::text = user_id);
+
+drop policy if exists "Players can remove their own friends" on public.friends;
+create policy "Players can remove their own friends"
+  on public.friends for delete
+  using (auth.uid()::text = user_id);

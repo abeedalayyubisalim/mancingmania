@@ -1,6 +1,7 @@
 import { isTouchDevice } from './settings.js'
 import { openShareCard } from './share-card.js'
 import { playUIClick } from './audio.js'
+import { EMOTES } from './social.js'
 
 // Temporarily disabled — a player reported the share flow being buggy.
 // Keeping the code path intact (just gated off) so it's a one-line flip to
@@ -42,10 +43,15 @@ export class Hud {
       </div>
       <button id="leaderboard-toggle" title="Papan Skor">🏆</button>
       <div id="leaderboard-panel" class="hidden">
-        <h3>Papan Skor Teratas</h3>
+        <h3>Papan Skor Teratas <span id="online-count-badge"></span></h3>
         <ol id="leaderboard-list"></ol>
         <button id="leaderboard-close">Tutup</button>
       </div>
+      <button id="emote-toggle" title="Emote">😀</button>
+      <div id="emote-panel" class="hidden">
+        ${EMOTES.map((e) => `<button class="emote-option" data-emote="${e.id}" title="${escapeHtml(e.label)}">${e.emoji}</button>`).join('')}
+      </div>
+      <div id="emote-toast" class="hidden"></div>
       <div id="controls-hint">
         ${
           isTouchDevice()
@@ -79,6 +85,9 @@ export class Hud {
     this.achievementToast = root.querySelector('#achievement-toast')
     this.timeWeatherEl = root.querySelector('#time-weather-box')
     this.interactPrompt = root.querySelector('#interact-prompt')
+    this.onlineCountBadge = root.querySelector('#online-count-badge')
+    this.emotePanel = root.querySelector('#emote-panel')
+    this.emoteToast = root.querySelector('#emote-toast')
 
     root.querySelector('#leaderboard-toggle').addEventListener('click', () => {
       playUIClick()
@@ -91,6 +100,17 @@ export class Hud {
     this.interactPrompt.addEventListener('click', () => {
       playUIClick()
       this._interactHandler?.()
+    })
+    root.querySelector('#emote-toggle').addEventListener('click', () => {
+      playUIClick()
+      this.emotePanel.classList.toggle('hidden')
+    })
+    this.emotePanel.querySelectorAll('.emote-option').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        playUIClick()
+        this.emotePanel.classList.add('hidden')
+        this.onSendEmote?.(btn.dataset.emote)
+      })
     })
     if (SHARE_ENABLED) {
       this.shareBtn.addEventListener('click', () => {
@@ -204,6 +224,24 @@ export class Hud {
   hideInteractPrompt() {
     this.interactPrompt.classList.add('hidden')
     this._interactHandler = null
+  }
+
+  setOnlineCount(n) {
+    this.onlineCountBadge.textContent = n > 0 ? `· 🟢 ${n} online` : ''
+  }
+
+  showEmoteToast({ username, avatar, emoteId }) {
+    const emote = EMOTES.find((e) => e.id === emoteId)
+    if (!emote) return
+    const el = document.createElement('div')
+    el.className = 'emote-toast-item'
+    el.innerHTML = `<span class="emote-toast-emoji">${emote.emoji}</span><span>${escapeHtml(avatar || '')} ${escapeHtml(username || 'Pemain')}</span>`
+    this.emoteToast.appendChild(el)
+    this.emoteToast.classList.remove('hidden')
+    setTimeout(() => {
+      el.remove()
+      if (!this.emoteToast.children.length) this.emoteToast.classList.add('hidden')
+    }, 3200)
   }
 
   toggleLeaderboard(force) {

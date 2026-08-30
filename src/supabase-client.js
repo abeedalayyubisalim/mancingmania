@@ -245,3 +245,57 @@ export async function fetchInventory(userId) {
   if (error) return []
   return data
 }
+
+// All inventory rows (any player) created since `sinceIso` — used to
+// compute the weekly leaderboard by re-deriving points earned from each
+// catch's fish id + weight, without needing a separate "weekly points"
+// column that would need a scheduled reset job.
+export async function fetchInventorySince(sinceIso) {
+  if (!supabase) return []
+  const { data, error } = await supabase
+    .from('inventory')
+    .select('user_id, jenis, berat, created_at')
+    .gte('created_at', sinceIso)
+  if (error) return []
+  return data
+}
+
+// Batch name/avatar lookup for a set of user ids (e.g. to label a weekly
+// leaderboard computed from raw inventory rows).
+export async function fetchProfilesByIds(ids) {
+  if (!supabase || !ids?.length) return []
+  let { data, error } = await supabase.from('leaderboard').select('id, name, avatar').in('id', ids)
+  if (error) {
+    ;({ data, error } = await supabase.from('leaderboard').select('id, name').in('id', ids))
+  }
+  if (error) return []
+  return data
+}
+
+// ---------------------------------------------------------------------------
+// Friends — a personal follow list (see supabase_schema.sql). Not public:
+// RLS only lets a player see their own list.
+// ---------------------------------------------------------------------------
+
+export async function fetchFriends(userId) {
+  if (!supabase || !userId) return []
+  const { data, error } = await supabase
+    .from('friends')
+    .select('friend_id, friend_name, created_at')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true })
+  if (error) return []
+  return data
+}
+
+export async function addFriend(userId, friendId, friendName) {
+  if (!supabase || !userId || !friendId) return
+  await supabase
+    .from('friends')
+    .upsert({ user_id: userId, friend_id: friendId, friend_name: friendName }, { onConflict: 'user_id,friend_id' })
+}
+
+export async function removeFriend(userId, friendId) {
+  if (!supabase || !userId) return
+  await supabase.from('friends').delete().eq('user_id', userId).eq('friend_id', friendId)
+}

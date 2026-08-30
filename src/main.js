@@ -35,6 +35,7 @@ import {
 } from './daily-reward.js'
 import { hasSeenTutorial, showTutorial } from './tutorial.js'
 import { unlockAudio, playAchievement, playDailyReward } from './audio.js'
+import { connectLobby, sendEmote } from './social.js'
 
 const app = document.querySelector('#app')
 
@@ -89,6 +90,21 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
     const rows = await fetchLeaderboard(10)
     hud.renderLeaderboard(rows, username)
   }
+
+  // ---- Presence ("who's online") + emotes -------------------------------
+  // Logged-in players use their stable auth id (so friends/leaderboard rows
+  // can match them up as online); guests get a random per-session id, which
+  // just means they show up as "online" without matching any specific
+  // profile row anywhere else.
+  const identityId = session?.user?.id ?? crypto.randomUUID()
+  connectLobby(
+    { id: identityId, username, avatar },
+    {
+      onOnlineChange: (players) => hud.setOnlineCount(players.length),
+      onEmote: (payload) => hud.showEmoteToast(payload),
+    }
+  )
+  hud.onSendEmote = (emoteId) => sendEmote({ username, avatar, emoteId })
 
   // Persists points/wallet to Supabase (logged in) or this browser (guest)
   // whenever either one changes — catch, store purchase, achievement, or

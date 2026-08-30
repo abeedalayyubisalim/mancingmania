@@ -3,12 +3,18 @@ import {
   signOut,
   fetchLeaderboard,
   fetchInventory,
+  fetchInventorySince,
+  fetchProfilesByIds,
   fetchPublicProfileById,
   fetchPublicProfileByName,
   searchPlayers,
   addInventoryItem,
+  fetchFriends,
+  addFriend,
+  removeFriend,
 } from './supabase-client.js'
-import { FISH_TYPES } from './game/fish-data.js'
+import { FISH_TYPES, pointsForWeight } from './game/fish-data.js'
+import { isOnline, onlineCount } from './social.js'
 import { fishIconSVG } from './fish-icon.js'
 import { getEntry, totalCaughtSpecies, groupInventoryRows } from './collection.js'
 import {
@@ -88,13 +94,23 @@ export class PauseMenu {
           <button id="pause-gallery" class="pause-btn">🐟 Koleksi Ikan</button>
           <button id="pause-achievements" class="pause-btn">🏅 Pencapaian</button>
           <button id="pause-store" class="pause-btn">🛒 Toko</button>
+          <button id="pause-friends" class="pause-btn">🧑‍🤝‍🧑 Teman</button>
           <button id="pause-leaderboard" class="pause-btn">🏆 Papan Skor</button>
           <button id="pause-settings" class="pause-btn">⚙️ Pengaturan</button>
           <button id="pause-logout" class="pause-btn danger">🚪 Keluar</button>
         </div>
         <div id="pause-view-leaderboard" class="pause-view hidden">
-          <h3>Papan Skor Teratas</h3>
+          <h3>Papan Skor <span id="leaderboard-online-badge"></span></h3>
+          <div class="leaderboard-tabs">
+            <button class="lb-tab active" data-mode="alltime">Semua Waktu</button>
+            <button class="lb-tab" data-mode="weekly">Minggu Ini</button>
+          </div>
           <ol id="pause-leaderboard-list"></ol>
+          <button class="pause-btn back-btn" data-back="main">← Kembali</button>
+        </div>
+        <div id="pause-view-friends" class="pause-view hidden">
+          <h3>Teman</h3>
+          <div id="friends-list"></div>
           <button class="pause-btn back-btn" data-back="main">← Kembali</button>
         </div>
         <div id="pause-view-store" class="pause-view hidden">
@@ -164,16 +180,21 @@ export class PauseMenu {
       store: this.el.querySelector('#pause-view-store'),
       profile: this.el.querySelector('#pause-view-profile'),
       'avatar-picker': this.el.querySelector('#pause-view-avatar-picker'),
+      friends: this.el.querySelector('#pause-view-friends'),
     }
 
     this.el.querySelector('#pause-resume').addEventListener('click', () => this.onResume?.())
-    this.el.querySelector('#pause-leaderboard').addEventListener('click', () => this._showLeaderboard())
+    this.el.querySelector('#pause-leaderboard').addEventListener('click', () => this._showLeaderboard('alltime'))
     this.el.querySelector('#pause-settings').addEventListener('click', () => this._showView('settings'))
     this.el.querySelector('#pause-gallery').addEventListener('click', () => this._showGallery())
     this.el.querySelector('#pause-store').addEventListener('click', () => this._showStore())
     this.el.querySelector('#pause-profile').addEventListener('click', () => this._showProfile())
     this.el.querySelector('#pause-logout').addEventListener('click', () => this._logout())
     this.el.querySelector('#pause-achievements').addEventListener('click', () => this._showAchievements())
+    this.el.querySelector('#pause-friends').addEventListener('click', () => this._showFriends())
+    this.el.querySelectorAll('.lb-tab').forEach((tab) => {
+      tab.addEventListener('click', () => this._showLeaderboard(tab.dataset.mode))
+    })
     // A light click sound on literally any button inside this menu (buy
     // buttons, back buttons, avatar picker, everything) — cheaper than
     // wiring it individually everywhere.
@@ -265,21 +286,86 @@ export class PauseMenu {
     Object.entries(this.views).forEach(([key, el]) => el.classList.toggle('hidden', key !== name))
   }
 
-  async _showLeaderboard() {
+  async _showLeaderboard(mode = 'alltime') {
     this._showView('leaderboard')
+    this._lbMode = mode
+    this.el.querySelectorAll('.lb-tab').forEach((tab) => tab.classList.toggle('active', tab.dataset.mode === mode))
+    const badge = this.el.querySelector('#leaderboard-online-badge')
+    const n = onlineCount()
+    badge.textContent = n > 0 ? `· 🟢 ${n} online` : ''
     const list = this.el.querySelector('#pause-leaderboard-list')
     list.innerHTML = '<li>Memuat...</li>'
-    const rows = await fetchLeaderboard(10)
+    const rows = mode === 'weekly' ? await this._fetchWeeklyLeaderboard() : await fetchLeaderboard(10)
     list.innerHTML =
       rows
         .map(
           (r, i) =>
-            `<li class="${r.username === this.username ? 'me' : ''} clickable" data-id="${r.id ?? ''}" data-name="${escapeHtml(r.username)}"><span>${i + 1}. ${escapeHtml(r.username)}</span><span>${r.score}</span></li>`
+            `<li class="${r.username === this.username ? 'me' : ''} clickable" data-id="${r.id ?? ''}" data-name="${escapeHtml(r.username)}"><span>${i + 1}. ${isOnline(r.id) ? '🟢 ' : ''}${escapeHtml(r.username)}</span><span>${r.score}</span></li>`
         )
-        .join('') || '<li>Belum ada skor.</li>'
+        .join('') || `<li>${mode === 'weekly' ? 'Belum ada tangkapan minggu ini.' : 'Belum ada skor.'}</li>`
     list.querySelectorAll('li[data-name]').forEach((li) => {
       li.addEventListener('click', () => this._showProfile(li.dataset.id || null, li.dataset.name))
     })
+  }
+
+  // Weekly leaderboard: re-derives points from raw catches in the last 7
+  // days (rolling window) instead of needing a scheduled reset column — a
+  // lightweight stand-in for a "tournament" that naturally resets itself.
+  async _fetchWeeklyLeaderboard() {
+    const sinceIso = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString()
+    const rows = await fetchInventorySince(sinceIso)
+    if (!rows.length) return []
+    const fishById = Object.fromEntries(FISH_TYPES.map((f) => [f.id, f]))
+    const totals = new Map()
+    for (const row of rows) {
+      const fish = fishById[row.jenis]
+      if (!fish) continue // skip gear/cosmetic/achievement/daily log rows
+      const pts = pointsForWeight(fish, row.berat ?? 0)
+      totals.set(row.user_id, (totals.get(row.user_id) ?? 0) + pts)
+    }
+    if (!totals.size) return []
+    const ids = [...totals.keys()]
+    const profiles = await fetchProfilesByIds(ids)
+    const nameById = Object.fromEntries(profiles.map((p) => [p.id, p.name]))
+    return ids
+      .map((id) => ({ id, username: nameById[id] ?? '???', score: Math.round(totals.get(id)) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 10)
+  }
+
+  async _showFriends() {
+    this._showView('friends')
+    const list = this.el.querySelector('#friends-list')
+    if (!this.userId) {
+      list.innerHTML = '<p class="gallery-status">Login dulu buat punya daftar teman.</p>'
+      return
+    }
+    list.innerHTML = '<p class="gallery-status">Memuat...</p>'
+    const rows = await fetchFriends(this.userId)
+    this._friendIdsCache = new Set(rows.map((r) => r.friend_id))
+    list.innerHTML = rows.length
+      ? rows
+          .map(
+            (r) =>
+              `<button class="friend-row" data-id="${r.friend_id}" data-name="${escapeHtml(r.friend_name)}">
+                <span class="friend-online-dot ${isOnline(r.friend_id) ? 'online' : ''}"></span>
+                <span>${escapeHtml(r.friend_name)}</span>
+              </button>`
+          )
+          .join('')
+      : '<p class="gallery-status">Belum ada teman. Tambahkan dari halaman profil pemain lain!</p>'
+    list.querySelectorAll('.friend-row').forEach((btn) => {
+      btn.addEventListener('click', () => this._showProfile(btn.dataset.id, btn.dataset.name))
+    })
+  }
+
+  async _ensureFriendIds() {
+    if (!this.userId) return new Set()
+    if (!this._friendIdsCache) {
+      const rows = await fetchFriends(this.userId)
+      this._friendIdsCache = new Set(rows.map((r) => r.friend_id))
+    }
+    return this._friendIdsCache
   }
 
   async _showGallery() {
@@ -550,16 +636,24 @@ export class PauseMenu {
           .join('')
       : '<p class="gallery-status">Belum ada item toko.</p>'
 
+    const isFriend = !isSelf && this.userId && targetUserId ? (await this._ensureFriendIds()).has(targetUserId) : false
+
     body.innerHTML = `
       <div class="profile-header">
         <div class="profile-avatar-wrap">
           <div class="profile-avatar">${escapeHtml(avatarForDisplay)}</div>
+          <span class="profile-online-dot ${targetUserId && isOnline(targetUserId) ? 'online' : ''}"></span>
           ${isSelf ? '<button id="profile-avatar-edit" class="avatar-edit-btn" title="Ganti foto profil">✏️</button>' : ''}
         </div>
         <div>
           <h3>${escapeHtml(username)}</h3>
           <div class="profile-level">⭐ Level ${info.level}</div>
         </div>
+        ${
+          !isSelf && this.userId && targetUserId
+            ? `<button id="profile-friend-btn" class="profile-friend-btn ${isFriend ? 'remove' : ''}">${isFriend ? '✕ Hapus Teman' : '+ Tambah Teman'}</button>`
+            : ''
+        }
       </div>
       <div class="profile-levelbar"><div class="profile-levelbar-fill" style="width:${Math.round(info.progress * 100)}%"></div></div>
       <div class="profile-levelbar-label">${info.pointsIntoLevel}/${info.pointsForNext} poin ke Level ${info.level + 1}</div>
@@ -588,6 +682,24 @@ export class PauseMenu {
     })
     const editBtn = body.querySelector('#profile-avatar-edit')
     if (editBtn) editBtn.addEventListener('click', () => this._showAvatarPicker())
+
+    const friendBtn = body.querySelector('#profile-friend-btn')
+    if (friendBtn) {
+      friendBtn.addEventListener('click', async () => {
+        const friendIds = await this._ensureFriendIds()
+        if (friendIds.has(targetUserId)) {
+          await removeFriend(this.userId, targetUserId)
+          friendIds.delete(targetUserId)
+          friendBtn.textContent = '+ Tambah Teman'
+          friendBtn.classList.remove('remove')
+        } else {
+          await addFriend(this.userId, targetUserId, username)
+          friendIds.add(targetUserId)
+          friendBtn.textContent = '✕ Hapus Teman'
+          friendBtn.classList.add('remove')
+        }
+      })
+    }
   }
 
   _showItemDetail(item) {
