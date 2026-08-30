@@ -17,6 +17,15 @@ const NORMAL_CYCLE_SECONDS = 600 // what game/daynight.js otherwise defaults to
 const START_HUNGER = 70
 const START_THIRST = 70
 const START_STAMINA = 100
+const START_HP = 100
+const START_AMMO = 6
+const MAX_AMMO = 10
+const AMMO_REGEN_SECONDS = 5 // stray rocks turn up as you wander around
+
+// From this night onward, monster-fish waves start showing up (see
+// game/monsters.js) — the first night is left alone so a brand new player
+// gets to learn the Hunger/Thirst/Stamina/cave loop before combat piles on.
+export const FIRST_WAVE_NIGHT = 2
 
 const BASE_HUNGER_DRAIN = 0.55 // per second
 const BASE_THIRST_DRAIN = 0.65
@@ -47,15 +56,20 @@ export class SurvivalSession {
     this.hunger = START_HUNGER
     this.thirst = START_THIRST
     this.stamina = START_STAMINA
+    this.hp = START_HP
+    this.ammo = START_AMMO
     this._wasNight = false
     this._sleptTonight = false
     this._drinkCooldown = 0
+    this._ammoRegenTimer = 0
 
     // Hooks main.js wires up.
     this.onStatChange = null // (snapshot) => void — called on meaningful stat changes
     this.onDayChange = null // (day, missedSleep) => void — fires at dawn
+    this.onNightStart = null // (day) => void — fires the moment night falls
     this.onGameOver = null // ({ reason, day }) => void
     this.onWin = null // ({ day }) => void
+    this.onEnd = null // () => void — fires on ANY run ending (win, lose, or abandon), for cleanup
   }
 
   snapshot() {
@@ -65,6 +79,10 @@ export class SurvivalSession {
       hunger: this.hunger,
       thirst: this.thirst,
       stamina: this.stamina,
+      hp: this.hp,
+      maxHp: START_HP,
+      ammo: this.ammo,
+      maxAmmo: MAX_AMMO,
     }
   }
 
@@ -75,9 +93,12 @@ export class SurvivalSession {
     this.hunger = START_HUNGER
     this.thirst = START_THIRST
     this.stamina = START_STAMINA
+    this.hp = START_HP
+    this.ammo = START_AMMO
     this._wasNight = this.dayNight.isNight()
     this._sleptTonight = false
     this._drinkCooldown = 0
+    this._ammoRegenTimer = 0
     this.dayNight.setCycleSeconds(CYCLE_SECONDS)
     this.onStatChange?.(this.snapshot())
   }
@@ -93,6 +114,7 @@ export class SurvivalSession {
     this.active = false
     this.ended = true
     this.dayNight.setCycleSeconds(NORMAL_CYCLE_SECONDS)
+    this.onEnd?.()
   }
 
   _recordIfBest(dayReached) {
@@ -138,6 +160,25 @@ export class SurvivalSession {
     return true
   }
 
+  // Sub-tahap Survival-C: contact damage from a monster fish (see
+  // game/monsters.js's onPlayerHit). Ends the run immediately on death
+  // instead of waiting for the next tick() pass, so it reads as responsive.
+  takeDamage(amount) {
+    if (!this.active) return
+    this.hp = Math.max(0, this.hp - amount)
+    this.onStatChange?.(this.snapshot())
+    if (this.hp <= 0) this._lose('diserang')
+  }
+
+  // Spends one rock if any are on hand — returns false (does nothing) if
+  // out of ammo, so the caller knows the throw didn't happen.
+  useAmmo() {
+    if (!this.active || this.ammo <= 0) return false
+    this.ammo -= 1
+    this.onStatChange?.(this.snapshot())
+    return true
+  }
+
   // Called from the Fishing onCatch callback while a run is active. Returns
   // how much Hunger it restored (0 for junk) so the caller can show it.
   feed(fish) {
@@ -151,6 +192,15 @@ export class SurvivalSession {
   tick(dt) {
     if (!this.active) return
     if (this._drinkCooldown > 0) this._drinkCooldown = Math.max(0, this._drinkCooldown - dt)
+
+    if (this.ammo < MAX_AMMO) {
+      this._ammoRegenTimer += dt
+      if (this._ammoRegenTimer >= AMMO_REGEN_SECONDS) {
+        this._ammoRegenTimer = 0
+        this.ammo = Math.min(MAX_AMMO, this.ammo + 1)
+        this.onStatChange?.(this.snapshot())
+      }
+    }
 
     const isNight = this.dayNight.isNight()
     const isRaining = this.dayNight.isRaining()
@@ -178,10 +228,11 @@ export class SurvivalSession {
       }
     } else if (isNight && !this._wasNight) {
       this._wasNight = true
+      this.onNightStart?.(this.day)
     }
 
-    if (this.hunger <= 0 || this.thirst <= 0 || this.stamina <= 0) {
-      const reason = this.hunger <= 0 ? 'lapar' : this.thirst <= 0 ? 'haus' : 'stamina'
+    if (this.hunger <= 0 || this.thirst <= 0 || this.stamina <= 0 || this.hp <= 0) {
+      const reason = this.hunger <= 0 ? 'lapar' : this.thirst <= 0 ? 'haus' : this.stamina <= 0 ? 'stamina' : 'diserang'
       this._lose(reason)
       return
     }

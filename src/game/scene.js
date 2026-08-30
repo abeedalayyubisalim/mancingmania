@@ -95,23 +95,53 @@ function island(x, z, radius, opts = {}) {
 function buildCave(x, z) {
   const group = new THREE.Group()
   const rockMat = new THREE.MeshStandardMaterial({ color: 0x6b6a62, flatShading: true })
-  const mouthMat = new THREE.MeshStandardMaterial({ color: 0x0c0c0e, flatShading: true })
+  const rockMat2 = new THREE.MeshStandardMaterial({ color: 0x59584f, flatShading: true })
+  const mouthMat = new THREE.MeshStandardMaterial({ color: 0x0a0a0c, flatShading: true })
+  const tunnelMat = new THREE.MeshStandardMaterial({ color: 0x18181a, flatShading: true })
 
-  const mound = new THREE.Mesh(new THREE.DodecahedronGeometry(2.3, 0), rockMat)
-  mound.position.set(0, 1.5, -0.6)
-  mound.scale.set(1.3, 0.95, 1.1)
-  mound.castShadow = true
-  mound.receiveShadow = true
-  group.add(mound)
+  // An irregular cluster of overlapping boulders forming a rocky hillside
+  // (instead of one single rock mound), so the entrance reads as built INTO
+  // a slope rather than floating on top of a lone rock ball.
+  const boulders = [
+    [-1.8, -0.6, 1.7, 1.7, 1.15, 1.4, rockMat],
+    [1.9, -0.3, 2.1, 1.5, 1.3, 1.3, rockMat2],
+    [0.1, -1.7, 2.7, 1.55, 1.0, 1.2, rockMat],
+    [-0.7, 0.8, 1.15, 1.35, 0.8, 1.0, rockMat2],
+    [2.6, 1.3, 1.4, 1.1, 0.9, 1.1, rockMat],
+  ]
+  for (const [dx, dz, y, sx, sy, sz, mat] of boulders) {
+    const b = new THREE.Mesh(new THREE.DodecahedronGeometry(1, 0), mat)
+    b.position.set(dx, y, dz)
+    b.scale.set(sx * 1.4, sy * 1.4, sz * 1.4)
+    b.rotation.set(Math.random() * 2, Math.random() * 2, Math.random() * 2)
+    b.castShadow = true
+    b.receiveShadow = true
+    group.add(b)
+  }
 
-  const mouth = new THREE.Mesh(new THREE.CircleGeometry(0.9, 12), mouthMat)
-  mouth.position.set(0, 0.95, 0.85)
+  // Recessed entrance with real depth — a dark tunnel block set back behind
+  // a rounded doorway, instead of just a flat painted circle on a rock face.
+  const tunnel = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.8, 3.2), tunnelMat)
+  tunnel.position.set(0, 1.35, 0.3)
+  group.add(tunnel)
+
+  const mouth = new THREE.Mesh(new THREE.CircleGeometry(1.4, 16), mouthMat)
+  mouth.position.set(0, 1.3, 1.85)
   group.add(mouth)
 
+  // A brow of rock overhanging the entrance.
+  const brow = new THREE.Mesh(new THREE.DodecahedronGeometry(1.6, 0), rockMat2)
+  brow.position.set(0, 2.9, 1.2)
+  brow.scale.set(1.8, 0.7, 1.1)
+  brow.castShadow = true
+  group.add(brow)
+
   for (const [dx, dz, s] of [
-    [-1.6, 0.6, 0.7],
-    [1.7, 0.3, 0.9],
-    [0.6, 1.3, 0.5],
+    [-2.6, 1.6, 0.8],
+    [2.8, 1.2, 0.9],
+    [0.6, 2.6, 0.55],
+    [-1.4, 2.4, 0.5],
+    [1.6, -1.4, 0.65],
   ]) {
     group.add(lowPolyRock(dx, dz, s))
   }
@@ -131,54 +161,71 @@ function buildMountain(x, z) {
   const group = new THREE.Group()
   const rockMat = new THREE.MeshStandardMaterial({ color: 0x8a8578, flatShading: true })
   const rockMat2 = new THREE.MeshStandardMaterial({ color: 0x716c60, flatShading: true })
+  const rockMat3 = new THREE.MeshStandardMaterial({ color: 0x5f5b52, flatShading: true })
   const snowMat = new THREE.MeshStandardMaterial({ color: 0xf1f1f6, flatShading: true })
+  const scrubMat = new THREE.MeshStandardMaterial({ color: 0x5a7a4a, flatShading: true })
 
-  const base = new THREE.Mesh(new THREE.ConeGeometry(10, 11, 8), rockMat)
-  base.position.set(0, 5, 0)
+  // Wide scrubby talus skirt blending the rock face into the surrounding
+  // grass, and four offset cone stages (instead of a perfectly centered
+  // stack) so the silhouette reads as an irregular peak rather than a
+  // single traffic-cone shape.
+  const skirt = new THREE.Mesh(new THREE.ConeGeometry(15, 5, 11), scrubMat)
+  skirt.position.set(0, 2.2, 0)
+  skirt.castShadow = true
+  skirt.receiveShadow = true
+  group.add(skirt)
+
+  const base = new THREE.Mesh(new THREE.ConeGeometry(14, 17, 11), rockMat)
+  base.position.set(-0.8, 8, 0.6)
   base.castShadow = true
   base.receiveShadow = true
   group.add(base)
 
-  const mid = new THREE.Mesh(new THREE.ConeGeometry(6, 6.5, 8), rockMat2)
-  mid.position.set(0.6, 10, -0.6)
+  const shoulder = new THREE.Mesh(new THREE.ConeGeometry(10, 10, 10), rockMat3)
+  shoulder.position.set(1, 14, -1)
+  shoulder.castShadow = true
+  group.add(shoulder)
+
+  const mid = new THREE.Mesh(new THREE.ConeGeometry(7, 9, 9), rockMat2)
+  mid.position.set(0.6, 19, -0.6)
   mid.castShadow = true
   group.add(mid)
 
-  const peak = new THREE.Mesh(new THREE.ConeGeometry(2.6, 3.8, 8), snowMat)
-  peak.position.set(0.6, 14, -0.6)
+  const peak = new THREE.Mesh(new THREE.ConeGeometry(3.4, 5.5, 8), snowMat)
+  peak.position.set(1, 25, -1)
   peak.castShadow = true
   group.add(peak)
 
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 10; i++) {
     const a = Math.random() * Math.PI * 2
-    const r = 8.5 + Math.random() * 3.5
-    group.add(lowPolyRock(Math.cos(a) * r, Math.sin(a) * r, 0.6 + Math.random() * 0.5))
+    const r = 13 + Math.random() * 6
+    group.add(lowPolyRock(Math.cos(a) * r, Math.sin(a) * r, 0.6 + Math.random() * 0.7))
   }
 
   group.position.set(x, 0, z)
   return group
 }
 
-function buildForest(x, z) {
+function buildForest(x, z, spread = 20) {
   const group = new THREE.Group()
   const undergrowthMat = new THREE.MeshStandardMaterial({ color: 0x3c7a42, flatShading: true })
 
-  for (let i = 0; i < 16; i++) {
-    const dx = (Math.random() - 0.5) * 20
-    const dz = (Math.random() - 0.5) * 20
+  for (let i = 0; i < 20; i++) {
+    const dx = (Math.random() - 0.5) * spread
+    const dz = (Math.random() - 0.5) * spread
     group.add(lowPolyTree(dx, dz))
   }
-  for (let i = 0; i < 6; i++) {
-    const dx = (Math.random() - 0.5) * 20
-    const dz = (Math.random() - 0.5) * 20
+  for (let i = 0; i < 8; i++) {
+    const dx = (Math.random() - 0.5) * spread
+    const dz = (Math.random() - 0.5) * spread
     const bush = new THREE.Mesh(new THREE.DodecahedronGeometry(0.5 + Math.random() * 0.3, 0), undergrowthMat)
     bush.position.set(dx, 0.3, dz)
     bush.castShadow = true
     group.add(bush)
   }
-  for (let i = 0; i < 4; i++) {
-    const dx = (Math.random() - 0.5) * 20
-    const dz = (Math.random() - 0.5) * 20
+  for (let i = 0; i < 5; i++) {
+    const dx = (Math.random() - 0.5) * spread
+    const dz = (Math.random() - 0.5) * spread
     group.add(lowPolyRock(dx, dz, 0.35 + Math.random() * 0.4))
   }
 
@@ -186,49 +233,82 @@ function buildForest(x, z) {
   return group
 }
 
-function buildLake(x, z, radius = 4.5) {
+// The island's own flat "grass" terrain sits at local y=0.5 (see
+// buildSurvivalIsland's grass cylinder: 0.6 tall, centered at y=0.2) and is
+// a single unbroken disc — there's no hole cut out of it for the lake/river
+// (that would need real hole-cut geometry, not just stacked primitives).
+// That matters twice over here:
+//  1. Anything positioned BELOW y=0.5 anywhere within the grass disc's
+//     footprint sits underneath that solid surface and is hidden by it —
+//     why the very first flat "pool" plane (and an early sunken-basin
+//     redesign) both rendered as invisible from almost every angle.
+//  2. Even once every layer is moved above y=0.5, a design where the water
+//     sits LOWER than a surrounding rim/bank has the same problem in
+//     miniature: from typical first-person eye height just outside the
+//     lake, the near side of that raised rim blocks the sightline down to
+//     the (shorter) water behind it — a crater viewed from ground level.
+// So instead of a basin OR a walled rim, this builds a gentle MOUND that
+// keeps rising toward the middle — bank, then water, then a deeper-blue
+// center accent, each a little taller than the last — so nothing is ever
+// hidden behind something shorter in front of it, from any angle.
+const GRASS_TOP = 0.5
+function buildLake(x, z, radius = 7) {
   const group = new THREE.Group()
-  const poolMat = new THREE.MeshStandardMaterial({
-    color: 0x4fb0d8,
+  const bankMat = new THREE.MeshStandardMaterial({ color: 0xcbb27a, flatShading: true })
+  const waterMat = new THREE.MeshStandardMaterial({
+    color: 0x3f9fce,
     flatShading: true,
-    roughness: 0.4,
+    roughness: 0.35,
     transparent: true,
-    opacity: 0.9,
+    opacity: 0.92,
   })
-  const bankMat = new THREE.MeshStandardMaterial({ color: 0x6b8f5a, flatShading: true })
+  const deepMat = new THREE.MeshStandardMaterial({
+    color: 0x27678f,
+    flatShading: true,
+    roughness: 0.3,
+    transparent: true,
+    opacity: 0.95,
+  })
 
-  const bank = new THREE.Mesh(new THREE.CylinderGeometry(radius * 1.3, radius * 1.4, 0.24, 20), bankMat)
-  bank.position.set(0, -0.02, 0)
+  const bank = new THREE.Mesh(new THREE.CylinderGeometry(radius * 1.1, radius * 1.4, 0.16, 24), bankMat)
+  bank.position.y = GRASS_TOP + 0.11
   bank.receiveShadow = true
+  bank.castShadow = true
   group.add(bank)
 
-  const pool = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, 0.12, 20), poolMat)
-  pool.position.set(0, 0.08, 0)
-  group.add(pool)
+  const water = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.5, radius * 1.15, 0.14, 24), waterMat)
+  water.position.y = GRASS_TOP + 0.24
+  group.add(water)
 
-  for (let i = 0; i < 7; i++) {
+  const deep = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.35, radius * 0.35, 0.12, 20), deepMat)
+  deep.position.y = GRASS_TOP + 0.29
+  group.add(deep)
+
+  for (let i = 0; i < 9; i++) {
     const a = Math.random() * Math.PI * 2
-    const r = radius * (1.05 + Math.random() * 0.35)
-    group.add(lowPolyRock(Math.cos(a) * r, Math.sin(a) * r, 0.35 + Math.random() * 0.4))
+    const r = radius * (1.15 + Math.random() * 0.35)
+    group.add(lowPolyRock(Math.cos(a) * r, Math.sin(a) * r, 0.35 + Math.random() * 0.45))
   }
 
   group.position.set(x, 0, z)
   return group
 }
 
-// A winding ribbon of flattened "water" boxes strung between waypoints
-// (island-local x/z pairs) — cheap stand-in for a proper river mesh, in
-// the same flat-shaded primitive style as everything else here.
-function buildRiver(points, width = 2.4) {
+// A winding channel strung between waypoints (island-local x/z pairs) —
+// same gently-rising-toward-the-water-not-a-basin approach as buildLake
+// above (see its comment): a sandy bank strip, with the water sitting a
+// little TALLER than it down the middle, so the bank never blocks the view
+// of the water from the side the way a taller outer rim would.
+function buildRiver(points, width = 3.2) {
   const group = new THREE.Group()
-  const mat = new THREE.MeshStandardMaterial({
-    color: 0x4fb0d8,
+  const bankMat = new THREE.MeshStandardMaterial({ color: 0xcbb27a, flatShading: true })
+  const waterMat = new THREE.MeshStandardMaterial({
+    color: 0x3f9fce,
     flatShading: true,
     roughness: 0.4,
     transparent: true,
     opacity: 0.88,
   })
-  const bankMat = new THREE.MeshStandardMaterial({ color: 0x6b8f5a, flatShading: true })
 
   for (let i = 0; i < points.length - 1; i++) {
     const [x1, z1] = points[i]
@@ -237,16 +317,20 @@ function buildRiver(points, width = 2.4) {
     const dz = z2 - z1
     const len = Math.hypot(dx, dz)
     const angle = Math.atan2(dx, dz)
+    const cx = (x1 + x2) / 2
+    const cz = (z1 + z2) / 2
 
-    const bank = new THREE.Mesh(new THREE.BoxGeometry(width + 1.3, 0.08, len + 0.6), bankMat)
-    bank.position.set((x1 + x2) / 2, -0.02, (z1 + z2) / 2)
+    const bank = new THREE.Mesh(new THREE.BoxGeometry(width + 2.2, 0.16, len + 0.6), bankMat)
+    bank.position.set(cx, GRASS_TOP + 0.11, cz)
     bank.rotation.y = angle
+    bank.receiveShadow = true
+    bank.castShadow = true
     group.add(bank)
 
-    const seg = new THREE.Mesh(new THREE.BoxGeometry(width, 0.1, len + 0.6), mat)
-    seg.position.set((x1 + x2) / 2, 0.06, (z1 + z2) / 2)
-    seg.rotation.y = angle
-    group.add(seg)
+    const water = new THREE.Mesh(new THREE.BoxGeometry(width, 0.16, len + 0.6), waterMat)
+    water.position.set(cx, GRASS_TOP + 0.25, cz)
+    water.rotation.y = angle
+    group.add(water)
   }
 
   for (const [x, z] of points) {
@@ -273,13 +357,13 @@ function buildSurvivalIsland(center) {
   // relative to; stretched deep underneath instead so that once the whole
   // group is lifted by SHORE_LIFT below, the beach clears the highest wave
   // crest and the base still vanishes below the lowest trough.
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(24, 27, 3, 18), sandMat)
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(34, 38, 3, 20), sandMat)
   base.scale.set(1, 1, 1.4)
   base.position.y = -1.3
   base.receiveShadow = true
   group.add(base)
 
-  const grass = new THREE.Mesh(new THREE.CylinderGeometry(20, 23, 0.6, 18), grassMat)
+  const grass = new THREE.Mesh(new THREE.CylinderGeometry(28, 32, 0.6, 20), grassMat)
   grass.scale.set(1, 1, 1.4)
   grass.position.set(0, 0.2, -3)
   grass.receiveShadow = true
@@ -287,22 +371,22 @@ function buildSurvivalIsland(center) {
 
   // Rising foothill toward the mountain at the north end, so the terrain
   // isn't perfectly flat everywhere.
-  const foothill = new THREE.Mesh(new THREE.CylinderGeometry(13, 17, 2.6, 14), hillMat)
-  foothill.position.set(1, 0.7, -20)
+  const foothill = new THREE.Mesh(new THREE.CylinderGeometry(18, 24, 3.2, 16), hillMat)
+  foothill.position.set(1, 0.9, -28)
   foothill.receiveShadow = true
   foothill.castShadow = true
   group.add(foothill)
 
-  group.add(buildMountain(0, -26))
-  group.add(buildCave(2, -15))
-  group.add(buildForest(-16, 2))
-  group.add(buildLake(16, 5))
-  group.add(buildRiver([[3, -18], [5, -8], [2, 2], [4, 12], [3, 21]]))
+  group.add(buildMountain(0, -36))
+  group.add(buildCave(3, -21))
+  group.add(buildForest(-22, 3, 26))
+  group.add(buildLake(22, 7))
+  group.add(buildRiver([[4, -25], [7, -11], [3, 3], [6, 17], [4, 29]]))
 
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 9; i++) {
     const a = Math.random() * Math.PI * 2
-    const r = 18 + Math.random() * 5
-    group.add(lowPolyRock(Math.cos(a) * r, 16 + Math.sin(a) * 5, 0.4 + Math.random() * 0.5))
+    const r = 25 + Math.random() * 6
+    group.add(lowPolyRock(Math.cos(a) * r, 22 + Math.sin(a) * 6, 0.4 + Math.random() * 0.5))
   }
 
   // Lifted clear of the waterline — see SHORE_LIFT.
@@ -438,12 +522,15 @@ export const PIER_RETURN_POSITION = { x: 0, z: 20 }
 export const SURVIVAL_ISLAND_CENTER = { x: -95, z: -95 }
 // Each of these is island-LOCAL offset + SURVIVAL_ISLAND_CENTER, matching
 // where buildSurvivalIsland actually placed that feature.
-export const SURVIVAL_CAVE_POSITION = { x: SURVIVAL_ISLAND_CENTER.x + 2, z: SURVIVAL_ISLAND_CENTER.z - 15 }
-export const SURVIVAL_LAKE_POSITION = { x: SURVIVAL_ISLAND_CENTER.x + 16, z: SURVIVAL_ISLAND_CENTER.z + 5 }
-export const SURVIVAL_RIVER_POSITION = { x: SURVIVAL_ISLAND_CENTER.x + 3, z: SURVIVAL_ISLAND_CENTER.z + 7 }
+export const SURVIVAL_CAVE_POSITION = { x: SURVIVAL_ISLAND_CENTER.x + 3, z: SURVIVAL_ISLAND_CENTER.z - 21 }
+export const SURVIVAL_LAKE_POSITION = { x: SURVIVAL_ISLAND_CENTER.x + 22, z: SURVIVAL_ISLAND_CENTER.z + 7 }
+// The middle bend of the river's waypoint path (see buildRiver's call in
+// buildSurvivalIsland) — the single representative point main.js measures
+// "am I near the river" proximity against.
+export const SURVIVAL_RIVER_POSITION = { x: SURVIVAL_ISLAND_CENTER.x + 5, z: SURVIVAL_ISLAND_CENTER.z + 10 }
 // Where a stranded player starts out — on the south beach, facing inland
 // toward the forest/river/mountain rather than straight out to open water.
-export const SURVIVAL_SPAWN_POSITION = { x: SURVIVAL_ISLAND_CENTER.x, z: SURVIVAL_ISLAND_CENTER.z + 20 }
+export const SURVIVAL_SPAWN_POSITION = { x: SURVIVAL_ISLAND_CENTER.x, z: SURVIVAL_ISLAND_CENTER.z + 30 }
 // The box the player is actually allowed to roam within during Survival
 // (see player.js's setMode) — this IS the walkable island footprint as far
 // as the game is concerned, so coast-detection below is defined relative to
@@ -451,10 +538,10 @@ export const SURVIVAL_SPAWN_POSITION = { x: SURVIVAL_ISLAND_CENTER.x, z: SURVIVA
 // to disagree, which made the spawn point read as "inland" and the far
 // mountain interior read as "coastal").
 export const SURVIVAL_ISLAND_BOUNDS = {
-  minX: SURVIVAL_ISLAND_CENTER.x - 26,
-  maxX: SURVIVAL_ISLAND_CENTER.x + 24,
-  minZ: SURVIVAL_ISLAND_CENTER.z - 34,
-  maxZ: SURVIVAL_ISLAND_CENTER.z + 26,
+  minX: SURVIVAL_ISLAND_CENTER.x - 36,
+  maxX: SURVIVAL_ISLAND_CENTER.x + 34,
+  minZ: SURVIVAL_ISLAND_CENTER.z - 48,
+  maxZ: SURVIVAL_ISLAND_CENTER.z + 36,
 }
 // Beyond this distance from the home island, the water counts as "open
 // sea" — better odds at rare fish, and a couple of species that only turn
@@ -480,8 +567,8 @@ function radialBump(px, pz, cx, cz, innerR, outerR, height) {
 export function getSurvivalGroundHeight(worldX, worldZ) {
   const lx = worldX - SURVIVAL_ISLAND_CENTER.x
   const lz = worldZ - SURVIVAL_ISLAND_CENTER.z
-  const foothill = radialBump(lx, lz, 1, -20, 8, 17, 2.1)
-  const mountain = radialBump(lx, lz, 0, -26, 3, 11, 9)
+  const foothill = radialBump(lx, lz, 1, -28, 11, 24, 2.6)
+  const mountain = radialBump(lx, lz, 0, -36, 6, 20, 13)
   return Math.max(foothill, mountain)
 }
 
@@ -492,7 +579,7 @@ export function getSurvivalGroundHeight(worldX, worldZ) {
 // actually moves within (see player.js). Used together with the river/lake
 // proximity checks (main.js) to gate fishing/casting to "actually near
 // water" during Survival.
-const COAST_MARGIN = 6
+const COAST_MARGIN = 7
 export function isNearSurvivalCoast(worldX, worldZ) {
   const b = SURVIVAL_ISLAND_BOUNDS
   const distToEdge = Math.min(worldX - b.minX, b.maxX - worldX, worldZ - b.minZ, b.maxZ - worldZ)

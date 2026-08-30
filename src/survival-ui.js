@@ -22,6 +22,7 @@ const LOSE_REASON_TEXT = {
   lapar: 'Kamu kelaparan di pulau itu...',
   haus: 'Kamu kehausan di pulau itu...',
   stamina: 'Kamu kehabisan tenaga karena begadang terus...',
+  diserang: 'Kamu diterkam gerombolan ikan buas...',
 }
 
 // `result` = { outcome: 'win' | 'lose', reason?, day, totalDays, bestDay, isNewRecord }

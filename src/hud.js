@@ -17,10 +17,13 @@ export class Hud {
       <div id="mp-banner" class="hidden"></div>
       <div id="survival-hud" class="hidden">
         <div id="survival-day"></div>
+        <div class="survival-bar-row"><span class="survival-bar-icon">❤️</span><div class="survival-bar"><div id="survival-bar-hp" class="survival-bar-fill hp"></div></div></div>
         <div class="survival-bar-row"><span class="survival-bar-icon">🍖</span><div class="survival-bar"><div id="survival-bar-hunger" class="survival-bar-fill hunger"></div></div></div>
         <div class="survival-bar-row"><span class="survival-bar-icon">💧</span><div class="survival-bar"><div id="survival-bar-thirst" class="survival-bar-fill thirst"></div></div></div>
         <div class="survival-bar-row"><span class="survival-bar-icon">⚡</span><div class="survival-bar"><div id="survival-bar-stamina" class="survival-bar-fill stamina"></div></div></div>
+        <div id="survival-ammo-row">🪨 Batu: <span id="survival-ammo-value">0</span></div>
       </div>
+      <div id="survival-wave-banner" class="hidden"></div>
       <div id="top-bar">
         <div id="score-box">🪙 <span id="score-value">0</span></div>
         <div id="level-box">⭐ Lv.<span id="level-value">1</span></div>
@@ -109,10 +112,13 @@ export class Hud {
     this.survivalHud = root.querySelector('#survival-hud')
     this.survivalDayEl = root.querySelector('#survival-day')
     this.survivalBars = {
+      hp: root.querySelector('#survival-bar-hp'),
       hunger: root.querySelector('#survival-bar-hunger'),
       thirst: root.querySelector('#survival-bar-thirst'),
       stamina: root.querySelector('#survival-bar-stamina'),
     }
+    this.survivalAmmoEl = root.querySelector('#survival-ammo-value')
+    this.survivalWaveBanner = root.querySelector('#survival-wave-banner')
     this.inviteToast = root.querySelector('#invite-toast')
     this.inviteToast.addEventListener('click', () => {
       if (!this._pendingInviteCode) return
@@ -326,7 +332,7 @@ export class Hud {
     this.survivalHud.classList.add('hidden')
   }
 
-  updateSurvivalStats({ day, totalDays, hunger, thirst, stamina }) {
+  updateSurvivalStats({ day, totalDays, hunger, thirst, stamina, hp, maxHp, ammo, maxAmmo }) {
     this.survivalDayEl.textContent = `🏝️ Hari ${day}/${totalDays}`
     this.survivalBars.hunger.style.width = `${Math.max(0, Math.min(100, hunger))}%`
     this.survivalBars.thirst.style.width = `${Math.max(0, Math.min(100, thirst))}%`
@@ -334,6 +340,24 @@ export class Hud {
     this.survivalBars.hunger.classList.toggle('low', hunger < 25)
     this.survivalBars.thirst.classList.toggle('low', thirst < 25)
     this.survivalBars.stamina.classList.toggle('low', stamina < 25)
+    if (hp != null && maxHp) {
+      const pct = Math.max(0, Math.min(100, (hp / maxHp) * 100))
+      this.survivalBars.hp.style.width = `${pct}%`
+      this.survivalBars.hp.classList.toggle('low', pct < 25)
+    }
+    if (ammo != null) {
+      this.survivalAmmoEl.textContent = `${ammo}${maxAmmo ? `/${maxAmmo}` : ''}`
+    }
+  }
+
+  // ---- Monster-fish wave banner (Sub-tahap Survival-C) -----------------
+  showWaveBanner(text) {
+    this.survivalWaveBanner.textContent = text
+    this.survivalWaveBanner.classList.remove('hidden')
+  }
+
+  hideWaveBanner() {
+    this.survivalWaveBanner.classList.add('hidden')
   }
 
   // A quick, small, transient message for Survival feed/drink/sleep events —

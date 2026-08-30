@@ -18,8 +18,9 @@ import { Water } from './game/water.js'
 import { Player, DEFAULT_ROD_COLOR } from './game/player.js'
 import { Fishing } from './game/fishing.js'
 import { DayNightCycle } from './game/daynight.js'
-import { SurvivalSession, foodValueFor, TOTAL_DAYS as SURVIVAL_TOTAL_DAYS } from './game/survival.js'
+import { SurvivalSession, foodValueFor, TOTAL_DAYS as SURVIVAL_TOTAL_DAYS, FIRST_WAVE_NIGHT } from './game/survival.js'
 import { showSleepTransition, hideSleepTransition, showSurvivalEnd } from './survival-ui.js'
+import { MonsterField } from './game/monsters.js'
 import {
   fetchProfile,
   syncPoints,
@@ -319,6 +320,49 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
   // core loop) ------------------------------------------------------------
   const survival = new SurvivalSession({ dayNight })
 
+  // ---- Monster-fish waves (Sub-tahap Survival-C) -------------------------
+  let waveActive = false
+  let waveTotal = 0
+  const monsters = new MonsterField({
+    scene,
+    onPlayerHit: (dmg) => survival.takeDamage(dmg),
+    onKill: (remaining) => {
+      if (!waveActive) return
+      if (remaining <= 0) {
+        waveActive = false
+        hud.hideWaveBanner()
+        hud.showSurvivalToast('✅ Gelombang ikan buas berhasil dihalau!')
+      } else {
+        hud.showWaveBanner(`⚠️ Gelombang malam! Ikan buas tersisa: ${remaining}/${waveTotal}`)
+      }
+    },
+  })
+
+  function startWave(day) {
+    const count = Math.min(2 + Math.floor(day / 2), 7)
+    waveTotal = count
+    waveActive = true
+    monsters.spawnWave(count)
+    hud.showWaveBanner(`⚠️ Gelombang malam! Ikan buas tersisa: ${count}/${count}`)
+    hud.showSurvivalToast('🌙 Ikan buas muncul dari air! Lempar batu (klik kanan / F) untuk melawan.', 4500)
+  }
+
+  function endWave() {
+    waveActive = false
+    monsters.despawnAll()
+    hud.hideWaveBanner()
+  }
+
+  function tryThrow() {
+    if (!survival.active || paused) return
+    if (!survival.useAmmo()) {
+      hud.showSurvivalToast('Kehabisan batu! Tunggu sebentar, batu baru terkumpul.', 1800)
+      return
+    }
+    const result = monsters.throwRock(camera)
+    if (result.killed) hud.showSurvivalToast('🎯 Kena! Ikan buas tumbang.', 1400)
+  }
+
   // ---- Multiplayer (Sub-tahap C: rooms, invites, live position sync) ----
   // No dedicated game server exists — this rides the same Supabase
   // Realtime broadcast/presence primitives as the lobby chat/presence
@@ -359,9 +403,9 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
 
   // ---- Survival camp (cave to sleep in, river/lake to drink from & fish
   // for freshwater species — Sub-tahap Survival-B) -------------------------
-  const CAVE_RADIUS = 3
-  const LAKE_RADIUS = 5.5
-  const RIVER_RADIUS = 4.5
+  const CAVE_RADIUS = 4.5
+  const LAKE_RADIUS = 10
+  const RIVER_RADIUS = 6.5
 
   function trySleep() {
     if (!survival.active || !dayNight.isNight()) return
@@ -422,6 +466,18 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
     window.addEventListener('keydown', (e) => {
       if (e.code !== 'KeyE' || paused) return
       getNearestInteraction()?.action()
+    })
+    // Sub-tahap Survival-C: throwing rocks at monster fish — right-click
+    // (mirroring "aim and throw" from countless other games) or F key,
+    // since left-click is already the fishing cast/reel action.
+    window.addEventListener('contextmenu', (e) => e.preventDefault())
+    window.addEventListener('mousedown', (e) => {
+      if (e.button !== 2 || paused || document.pointerLockElement !== renderer.domElement) return
+      tryThrow()
+    })
+    window.addEventListener('keydown', (e) => {
+      if (e.code !== 'KeyF' || paused) return
+      tryThrow()
     })
     window.addEventListener('keydown', (e) => {
       if (e.code !== 'KeyQ') return
@@ -599,6 +655,8 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
     onStartSurvival: () => startSurvival(),
     onLeaveSurvival: () => {
       hud.hideSurvivalHud()
+      hud.hideWaveBanner()
+      touchControls?.setThrowVisible(false)
       player.setMode('dock', PIER_RETURN_POSITION)
     },
   })
@@ -627,21 +685,31 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
   // ---- Survival event wiring (Sub-tahap Survival-A) ----------------------
   function startSurvival() {
     survival.start()
+    endWave()
     player.setMode('island', SURVIVAL_SPAWN_POSITION)
     hud.showSurvivalHud()
     hud.updateSurvivalStats(survival.snapshot())
+    touchControls?.setThrowVisible(true)
     enterGame()
     lastSurvivalSpot = null
     lastThirstNudge = 0
     hud.showSurvivalToast(
-      '🏝️ Terdampar! Mancing cuma bisa di pantai, sungai, atau danau. Minum di sungai/danau. Malam hari, tidur di gua (dekat gunung) biar aman.',
-      7000
+      '🏝️ Terdampar! Mancing cuma bisa di pantai, sungai, atau danau. Minum di sungai/danau. Malam hari, tidur di gua (dekat gunung) biar aman. Waspada gelombang ikan buas mulai malam ke-2!',
+      7500
     )
   }
 
   survival.onStatChange = (snapshot) => hud.updateSurvivalStats(snapshot)
+  survival.onNightStart = (day) => {
+    if (day >= FIRST_WAVE_NIGHT) startWave(day)
+  }
   survival.onDayChange = (day, missedSleep) => {
+    endWave()
     if (missedSleep) hud.showSurvivalToast(`☀️ Fajar tiba, kamu begadang semalaman... Stamina berkurang! Hari ${day} dimulai.`)
+  }
+  survival.onEnd = () => {
+    endWave()
+    touchControls?.setThrowVisible(false)
   }
   survival.onGameOver = ({ reason, day, isNewRecord, bestDay }) => {
     hud.hideSurvivalHud()
@@ -759,6 +827,9 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
       onJump: () => {
         if (!paused) player.jump()
       },
+      onThrow: () => {
+        if (!paused) tryThrow()
+      },
       onPause: () => {
         if (paused) {
           paused = false
@@ -788,6 +859,7 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
       fishing.update(dt, elapsed)
       dayNight.update(dt)
       survival.tick(dt)
+      if (survival.active) monsters.update(dt, camera.position, elapsed)
       updateInteractPrompt()
       updateSurvivalZoneHint()
     }

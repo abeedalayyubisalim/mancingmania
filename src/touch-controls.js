@@ -2,13 +2,14 @@
 // a drag area to look around, a big fishing action button, and a pause
 // button (there's no Escape key on a touchscreen).
 export class TouchControls {
-  constructor(root, { onMove, onLook, onActionStart, onActionEnd, onPause, onJump }) {
+  constructor(root, { onMove, onLook, onActionStart, onActionEnd, onPause, onJump, onThrow }) {
     this.onMove = onMove
     this.onLook = onLook
     this.onActionStart = onActionStart
     this.onActionEnd = onActionEnd
     this.onPause = onPause
     this.onJump = onJump
+    this.onThrow = onThrow
 
     const wrap = document.createElement('div')
     wrap.id = 'touch-controls'
@@ -17,6 +18,7 @@ export class TouchControls {
       <div id="touch-joystick"><div id="touch-joystick-knob"></div></div>
       <button id="touch-pause-btn" aria-label="Menu">☰</button>
       <button id="touch-jump-btn" aria-label="Lompat">⤴️</button>
+      <button id="touch-throw-btn" class="hidden" aria-label="Lempar batu">🪨</button>
       <button id="touch-action-btn" aria-label="Pancing">🎣</button>
     `
     root.appendChild(wrap)
@@ -27,6 +29,7 @@ export class TouchControls {
     this.actionBtn = wrap.querySelector('#touch-action-btn')
     this.pauseBtn = wrap.querySelector('#touch-pause-btn')
     this.jumpBtn = wrap.querySelector('#touch-jump-btn')
+    this.throwBtn = wrap.querySelector('#touch-throw-btn')
 
     this._joystickId = null
     this._lookId = null
@@ -35,6 +38,15 @@ export class TouchControls {
     this._wireJoystick()
     this._wireLook()
     this._wireAction()
+
+    this.throwBtn.addEventListener(
+      'touchstart',
+      (e) => {
+        e.preventDefault()
+        this.onThrow?.()
+      },
+      { passive: false }
+    )
 
     this.pauseBtn.addEventListener('click', () => this.onPause?.())
     this.jumpBtn.addEventListener(
@@ -139,5 +151,11 @@ export class TouchControls {
 
   setVisible(visible) {
     document.querySelector('#touch-controls')?.classList.toggle('hidden', !visible)
+  }
+
+  // Only relevant during a Survival run — hidden the rest of the time so
+  // Normal/Multiplayer mode's touch layout is unchanged.
+  setThrowVisible(visible) {
+    this.throwBtn.classList.toggle('hidden', !visible)
   }
 }
