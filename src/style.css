@@ -455,6 +455,122 @@ html, body {
   margin-bottom: 18px;
 }
 
+/* ---------- Fish gallery / collection ---------- */
+#pause-view-gallery h3 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+#gallery-progress {
+  font-size: 12px;
+  font-weight: 400;
+  color: #9fc7db;
+}
+
+#gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 6px;
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.gallery-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 4px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  cursor: pointer;
+}
+
+.gallery-card.locked {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.gallery-card-icon {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+}
+
+.gallery-card-name {
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.25;
+}
+
+.gallery-card-count {
+  font-size: 10px;
+  color: #ffd479;
+}
+
+#pause-view-gallery-detail {
+  text-align: left;
+}
+
+.detail-icon {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 6px;
+}
+
+#gallery-detail-body h3 {
+  text-align: center;
+  margin: 0 0 2px;
+}
+
+.detail-latin {
+  text-align: center;
+  font-style: italic;
+  color: #9fc7db;
+  font-size: 12px;
+  margin: 0 0 14px;
+}
+
+.detail-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.detail-row span {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffd479;
+  margin-bottom: 2px;
+}
+
+.detail-row p {
+  margin: 0;
+  font-size: 13px;
+  color: #dce9f0;
+  line-height: 1.4;
+}
+
+.detail-footer {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #9fc7db;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  padding-top: 10px;
+  margin-bottom: 10px;
+}
+
 /* ---------- Touch controls ---------- */
 #touch-controls.hidden {
   display: none;

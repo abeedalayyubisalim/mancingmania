@@ -10,6 +10,7 @@ import { submitScore, fetchLeaderboard } from './supabase-client.js'
 import { PauseMenu } from './pause-menu.js'
 import { TouchControls } from './touch-controls.js'
 import { isTouchDevice } from './settings.js'
+import { recordCatch } from './collection.js'
 
 const app = document.querySelector('#app')
 
@@ -64,6 +65,7 @@ function startGame({ session, username, guest }) {
     domElement: renderer.domElement,
     onStatus: (text, opts) => hud.setStatus(text, opts),
     onCatch: (fish) => {
+      recordCatch(fish.id)
       if (!fish.junk) {
         score += fish.points
         hud.setScore(score)
