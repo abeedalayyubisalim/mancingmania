@@ -41,13 +41,11 @@ export class Fishing {
 
     this._onMouseDown = (e) => {
       if (e.button !== 0 || document.pointerLockElement !== this.domElement) return
-      this.holding = true
-      this._handlePress()
+      this.pressAction()
     }
     this._onMouseUp = (e) => {
       if (e.button !== 0) return
-      this.holding = false
-      this._handleRelease()
+      this.releaseAction()
     }
     document.addEventListener('mousedown', this._onMouseDown)
     document.addEventListener('mouseup', this._onMouseUp)
@@ -84,7 +82,10 @@ export class Fishing {
     this.onStatus?.(text, opts)
   }
 
-  _handlePress() {
+  // Public entry points for whatever input device is driving the game
+  // (mouse hold, or a touch action button on mobile).
+  pressAction() {
+    this.holding = true
     if (this.state === STATE.IDLE) {
       this.state = STATE.CHARGING
       this.power = 0
@@ -94,7 +95,8 @@ export class Fishing {
     }
   }
 
-  _handleRelease() {
+  releaseAction() {
+    this.holding = false
     if (this.state === STATE.CHARGING) {
       this._cast()
     }

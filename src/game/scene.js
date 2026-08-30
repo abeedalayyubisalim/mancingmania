@@ -136,7 +136,13 @@ export function buildEnvironment(scene) {
   sun.shadow.camera.top = 50
   sun.shadow.camera.bottom = -50
   sun.shadow.camera.far = 150
+  sun.shadow.bias = -0.001
   scene.add(sun)
+
+  // Flat fill light so surfaces facing away from the sun (shadowed dock
+  // underside, island slopes, etc.) never render as pure black.
+  const ambient = new THREE.AmbientLight(0xffffff, 0.55)
+  scene.add(ambient)
 
   const dock = buildDock()
   scene.add(dock)

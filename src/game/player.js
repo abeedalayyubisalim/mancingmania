@@ -1,18 +1,23 @@
 import * as THREE from 'three'
 import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js'
+import { settings } from '../settings.js'
 
 // Bounds the player is allowed to walk within (the dock platform + pier).
 const BOUNDS = { minX: -2.6, maxX: 2.6, minZ: 2, maxZ: 24.5 }
 const EYE_HEIGHT = 1.7
+const _euler = new THREE.Euler(0, 0, 0, 'YXZ')
 
 export class Player {
   constructor(camera, domElement) {
     this.camera = camera
     this.controls = new PointerLockControls(camera, domElement)
+    this.controls.pointerSpeed = settings.lookSensitivity
 
     this.camera.position.set(0, EYE_HEIGHT, 5)
 
     this.move = { forward: false, back: false, left: false, right: false }
+    // Analog stick input (touch joystick), each in [-1, 1].
+    this.analog = { x: 0, y: 0 }
     this.velocity = new THREE.Vector3()
 
     this._onKeyDown = (e) => this.setKey(e.code, true)
@@ -85,6 +90,25 @@ export class Player {
     return this.rodTipLocal.clone().applyMatrix4(this.rodGroup.matrixWorld)
   }
 
+  // Set by the touch joystick: x = strafe (-1..1), y = forward/back (-1..1).
+  setAnalogMove(x, y) {
+    this.analog.x = x
+    this.analog.y = y
+  }
+
+  // Rotates the camera directly from a touch-drag delta (used on mobile,
+  // where the Pointer Lock API PointerLockControls relies on isn't reliably
+  // available). Mirrors PointerLockControls' own YXZ euler math.
+  applyLookDelta(dx, dy) {
+    _euler.setFromQuaternion(this.camera.quaternion)
+    const s = 0.0025 * settings.lookSensitivity
+    _euler.y -= dx * s
+    _euler.x -= dy * s
+    const maxPitch = Math.PI / 2 - 0.01
+    _euler.x = Math.max(-maxPitch, Math.min(maxPitch, _euler.x))
+    this.camera.quaternion.setFromEuler(_euler)
+  }
+
   update(dt, bobAmount = 1) {
     const speed = 3.2
     const damping = 10
@@ -100,7 +124,10 @@ export class Player {
     if (this.move.back) wish.sub(forward)
     if (this.move.right) wish.add(right)
     if (this.move.left) wish.sub(right)
-    if (wish.lengthSq() > 0) wish.normalize().multiplyScalar(speed)
+    wish.addScaledVector(forward, this.analog.y)
+    wish.addScaledVector(right, this.analog.x)
+    if (wish.lengthSq() > 1) wish.normalize()
+    wish.multiplyScalar(speed)
 
     this.velocity.lerp(wish, Math.min(1, damping * dt))
 

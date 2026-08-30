@@ -11,13 +11,18 @@ export class Water {
 
     this.basePositions = geometry.attributes.position.array.slice()
 
+    // Smooth (not flat) shading: flat shading derives its normal from
+    // screen-space derivatives, which blow up into solid black patches
+    // at grazing viewing angles — exactly the angle you get standing at
+    // eye height looking out across a wide, animated water plane.
     const material = new THREE.MeshStandardMaterial({
       color: 0x1c6fa5,
-      flatShading: true,
+      flatShading: false,
       roughness: 0.65,
       metalness: 0.05,
       transparent: true,
       opacity: 0.92,
+      side: THREE.DoubleSide,
     })
 
     this.mesh = new THREE.Mesh(geometry, material)

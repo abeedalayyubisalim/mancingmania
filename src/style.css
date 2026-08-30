@@ -150,30 +150,7 @@ html, body {
   display: block;
   width: 100%;
   height: 100%;
-}
-
-#blocker {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.55);
-  cursor: pointer;
-  text-align: center;
-}
-
-#blocker-inner {
-  background: rgba(10, 25, 35, 0.85);
-  padding: 24px 30px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-}
-
-#blocker-inner p {
-  color: #c9dde8;
-  font-size: 13px;
-  line-height: 1.5;
+  touch-action: none;
 }
 
 #hud-root {
@@ -359,4 +336,218 @@ html, body {
   font-size: 11px;
   color: rgba(255, 255, 255, 0.55);
   white-space: nowrap;
+}
+
+/* ---------- Pause menu ---------- */
+#pause-menu {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 30;
+}
+
+#pause-menu.hidden {
+  display: none;
+}
+
+#pause-card {
+  width: 300px;
+  max-width: 88vw;
+  max-height: 84vh;
+  overflow-y: auto;
+  background: rgba(10, 25, 35, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 14px;
+  padding: 26px 26px 20px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+#pause-card h2 {
+  margin: 0 0 6px;
+  font-size: 22px;
+}
+
+#pause-card h3 {
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+
+#pause-hint {
+  color: #b7cdd8;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0 0 18px;
+}
+
+.pause-view.hidden {
+  display: none;
+}
+
+.pause-btn {
+  display: block;
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 10px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pause-btn.primary {
+  background: linear-gradient(135deg, #37a3e0, #1c6fa5);
+  border-color: transparent;
+}
+
+.pause-btn.danger {
+  background: rgba(220, 70, 70, 0.15);
+  border-color: rgba(220, 70, 70, 0.4);
+  color: #ff9d9d;
+}
+
+.pause-btn.back-btn {
+  margin-top: 8px;
+  background: none;
+}
+
+#pause-leaderboard-list {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+  text-align: left;
+}
+
+#pause-leaderboard-list li {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+#pause-leaderboard-list li.me {
+  background: rgba(255, 212, 121, 0.18);
+}
+
+#pause-sensitivity-label {
+  display: block;
+  font-size: 13px;
+  color: #cfe3ee;
+  margin-bottom: 10px;
+  text-align: left;
+}
+
+#pause-sensitivity {
+  width: 100%;
+  margin-bottom: 18px;
+}
+
+/* ---------- Touch controls ---------- */
+#touch-controls.hidden {
+  display: none;
+}
+
+#touch-lookpad {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 130px;
+  left: 42%;
+  z-index: 1;
+  touch-action: none;
+}
+
+#touch-joystick {
+  position: absolute;
+  left: 26px;
+  bottom: 26px;
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  z-index: 5;
+  touch-action: none;
+}
+
+#touch-joystick-knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 46px;
+  height: 46px;
+  margin: -23px 0 0 -23px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  pointer-events: none;
+}
+
+#touch-action-btn {
+  position: absolute;
+  right: 26px;
+  bottom: 30px;
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: rgba(55, 163, 224, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  font-size: 32px;
+  z-index: 5;
+  touch-action: none;
+}
+
+#touch-action-btn:active {
+  background: rgba(55, 163, 224, 0.6);
+}
+
+#touch-pause-btn {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 16px;
+  z-index: 5;
+}
+
+/* ---------- Responsive / touch layout tweaks ---------- */
+.touch-mode #status-box {
+  bottom: 146px;
+  width: min(320px, 70vw);
+}
+
+.touch-mode #top-bar {
+  left: 64px;
+}
+
+.touch-mode #controls-hint {
+  display: none;
+}
+
+@media (max-width: 480px) {
+  #pause-card {
+    padding: 20px 18px 16px;
+  }
+
+  .touch-mode #status-box {
+    width: 78vw;
+  }
 }
