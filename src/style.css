@@ -1210,6 +1210,42 @@ html, body {
   }
 }
 
+/* ---------- Time/weather badge ---------- */
+#time-weather-box {
+  background: rgba(0, 0, 0, 0.45);
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  font-size: 13px;
+}
+
+/* ---------- Boat/dock interact prompt ---------- */
+#interact-prompt {
+  position: absolute;
+  bottom: 110px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  padding: 8px 18px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  pointer-events: auto;
+  cursor: pointer;
+  /* Above the touch look-drag pad (z-index 1) so it's actually tappable —
+     same fix the catch-popup share button needed. */
+  z-index: 20;
+}
+
+#interact-prompt.hidden {
+  display: none;
+}
+
+.touch-mode #interact-prompt {
+  bottom: 150px;
+}
+
 /* ---------- Sync status indicator ---------- */
 #sync-status {
   align-self: center;

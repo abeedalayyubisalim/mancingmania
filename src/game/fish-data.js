@@ -271,6 +271,42 @@ export const FISH_TYPES = [
     fact: 'Relatif tidak berbahaya bagi manusia — lebih sering menghindar daripada menyerang. Sebaiknya dilepas lagi kalau tertangkap!',
   },
   {
+    id: 'layaran',
+    name: 'Ikan Layaran',
+    tier: 'very-rare',
+    spawnWeight: 3,
+    minKg: 15,
+    maxKg: 60,
+    pointsPerKg: 90,
+    color: 0x3f6fa0,
+    size: 1.25,
+    rarityBias: 0.5,
+    deepSeaOnly: true,
+    latin: 'Istiophorus platypterus',
+    habitat: 'Laut lepas tropis & subtropis di seluruh dunia — hanya muncul jauh dari dermaga, di laut dalam.',
+    sizeInfo: 'Bisa tumbuh lebih dari 3 m, dengan sirip punggung besar seperti layar kapal.',
+    lifespan: 'Sekitar 4-5 tahun.',
+    fact: 'Salah satu ikan tercepat di lautan, tercatat bisa berenang lebih dari 100 km/jam dalam ledakan kecepatan singkat.',
+  },
+  {
+    id: 'gurita',
+    name: 'Gurita Raksasa',
+    tier: 'rare',
+    spawnWeight: 4,
+    minKg: 3,
+    maxKg: 25,
+    pointsPerKg: 70,
+    color: 0xa8456b,
+    size: 0.85,
+    rarityBias: 0.35,
+    deepSeaOnly: true,
+    latin: 'Enteroctopus dofleini',
+    habitat: 'Perairan dalam & dingin — di dunia nyata lebih umum di Pasifik Utara, tapi di sini konon bersembunyi di celah laut dalam sekitar dermaga.',
+    sizeInfo: 'Rentang lengan bisa mencapai lebih dari 4 m.',
+    lifespan: 'Sekitar 3-5 tahun.',
+    fact: 'Salah satu invertebrata paling cerdas — tercatat bisa membuka toples dan memecahkan teka-teki sederhana.',
+  },
+  {
     id: 'golden',
     name: 'Ikan Emas Legendaris',
     tier: 'legendary',
@@ -347,12 +383,17 @@ export const FISH_TYPES = [
 // Picks a random fish. `castPower` (0..1) biases toward rarer fish on
 // stronger casts. `rareBonus` and `legendaryBonus` come from equipped store
 // items (hooks/nets) and add extra weight to rare-tier and legendary fish
-// respectively, on top of the cast-power bias.
-export function rollFish(castPower, rareBonus = 0, legendaryBonus = 0) {
-  const weighted = FISH_TYPES.map((f) => {
+// respectively, on top of the cast-power bias. `zone` (from the day/night
+// cycle + player's boat/dock position) can additionally unlock deep-sea-only
+// species and give them a further boost.
+export function rollFish(castPower, rareBonus = 0, legendaryBonus = 0, zone = {}) {
+  const { deepSea = false, deepSeaBonus = 0 } = zone
+  const pool = FISH_TYPES.filter((f) => !f.deepSeaOnly || deepSea)
+  const weighted = pool.map((f) => {
     let bonus = 1 + castPower * f.rarityBias * 4
     if (f.rarityBias > 0) bonus += rareBonus * f.rarityBias * 4
     if (f.legendary) bonus += legendaryBonus * 4
+    if (deepSea && f.rarityBias > 0) bonus += deepSeaBonus * f.rarityBias * 4
     return { fish: f, w: Math.max(0.001, f.spawnWeight * bonus) }
   })
   const total = weighted.reduce((s, x) => s + x.w, 0)
@@ -361,7 +402,7 @@ export function rollFish(castPower, rareBonus = 0, legendaryBonus = 0) {
     if (r < w) return fish
     r -= w
   }
-  return FISH_TYPES[0]
+  return pool[0]
 }
 
 // Rolls an actual weight (kg) for a caught fish, biased toward the middle

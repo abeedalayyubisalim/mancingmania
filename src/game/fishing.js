@@ -19,7 +19,19 @@ const BITE_WINDOW = 0.85
 const REEL_TIMEOUT = 22
 
 export class Fishing {
-  constructor({ scene, camera, player, water, domElement, onStatus, onCatch, onMiss }) {
+  constructor({
+    scene,
+    camera,
+    player,
+    water,
+    domElement,
+    onStatus,
+    onCatch,
+    onMiss,
+    getZone,
+    getExtraBiteSpeedBonus,
+    getExtraLegendaryBonus,
+  }) {
     this.scene = scene
     this.camera = camera
     this.player = player
@@ -28,6 +40,12 @@ export class Fishing {
     this.onStatus = onStatus
     this.onCatch = onCatch
     this.onMiss = onMiss
+    // Optional hooks the day/night cycle + boat/zone system plug into, so
+    // rain and open-sea sailing actually affect what you catch. All
+    // default to "no effect" so Fishing works standalone without them.
+    this.getZone = getZone ?? (() => ({}))
+    this.getExtraBiteSpeedBonus = getExtraBiteSpeedBonus ?? (() => 0)
+    this.getExtraLegendaryBonus = getExtraLegendaryBonus ?? (() => 0)
 
     this.state = STATE.IDLE
     this.power = 0
@@ -128,7 +146,8 @@ export class Fishing {
   _startWaiting() {
     this.state = STATE.WAITING
     const base = 1.6 + Math.random() * 2.8 - this.power * 0.4
-    this._waitTimer = Math.max(0.4, base * (1 - getBiteSpeedBonus()))
+    const biteBonus = Math.min(0.85, getBiteSpeedBonus() + this.getExtraBiteSpeedBonus())
+    this._waitTimer = Math.max(0.4, base * (1 - biteBonus))
     this._setStatus('Menunggu ikan menggigit...')
   }
 
@@ -140,7 +159,8 @@ export class Fishing {
   }
 
   _hookFish() {
-    const base = rollFish(this.power, getRareBonus(), getLegendaryBonus())
+    const legendaryBonus = getLegendaryBonus() + this.getExtraLegendaryBonus()
+    const base = rollFish(this.power, getRareBonus(), legendaryBonus, this.getZone())
     const weight = rollWeight(base)
     this.currentFish = { ...base, weight, points: pointsForWeight(base, weight) }
     this.pattern = catchPatternFor(this.currentFish)

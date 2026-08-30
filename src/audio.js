@@ -250,3 +250,49 @@ export function setMusicMuted(muted) {
 export function isMusicMuted() {
   return !!settings.musicMuted
 }
+
+// ---------------------------------------------------------------------------
+// Rain ambience — a continuous filtered-noise loop, toggled on/off by the
+// day/night cycle's weather system. Independent of the background pad music
+// so it keeps playing (or not) regardless of the music mute setting.
+// ---------------------------------------------------------------------------
+
+let rainNodes = null
+
+export function setRainSound(on) {
+  const c = ensureContext()
+  if (!c) return
+  if (on && !rainNodes) {
+    const bufferSize = c.sampleRate * 3
+    const buffer = c.createBuffer(1, bufferSize, c.sampleRate)
+    const data = buffer.getChannelData(0)
+    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1
+    const src = c.createBufferSource()
+    src.buffer = buffer
+    src.loop = true
+    const filter = c.createBiquadFilter()
+    filter.type = 'bandpass'
+    filter.frequency.value = 3200
+    filter.Q.value = 0.6
+    const gain = c.createGain()
+    gain.gain.setValueAtTime(0, c.currentTime)
+    gain.gain.linearRampToValueAtTime(0.09, c.currentTime + 1.2)
+    src.connect(filter)
+    filter.connect(gain)
+    gain.connect(musicGain)
+    src.start()
+    rainNodes = { src, filter, gain }
+  } else if (!on && rainNodes) {
+    const { src, gain } = rainNodes
+    gain.gain.setTargetAtTime(0, c.currentTime, 0.4)
+    setTimeout(() => {
+      try {
+        src.stop()
+        src.disconnect()
+      } catch {
+        // Already stopped — fine.
+      }
+    }, 1500)
+    rainNodes = null
+  }
+}

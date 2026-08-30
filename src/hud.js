@@ -2,6 +2,11 @@ import { isTouchDevice } from './settings.js'
 import { openShareCard } from './share-card.js'
 import { playUIClick } from './audio.js'
 
+// Temporarily disabled — a player reported the share flow being buggy.
+// Keeping the code path intact (just gated off) so it's a one-line flip to
+// re-enable once it's fixed instead of having to rebuild the feature.
+const SHARE_ENABLED = false
+
 export class Hud {
   constructor(root) {
     this.root = root
@@ -12,10 +17,12 @@ export class Hud {
         <div id="score-box">🪙 <span id="score-value">0</span></div>
         <div id="level-box">⭐ Lv.<span id="level-value">1</span></div>
         <div id="user-box"><span id="username-value"></span><span id="user-badge"></span></div>
+        <div id="time-weather-box"></div>
         <div id="sync-status" class="hidden"></div>
       </div>
       <div id="levelup-toast" class="hidden"></div>
       <div id="achievement-toast" class="hidden"></div>
+      <div id="interact-prompt" class="hidden"></div>
       <div id="status-box">
         <div id="status-text">Klik untuk mulai memancing</div>
         <div id="power-bar"><div id="power-fill"></div></div>
@@ -42,8 +49,8 @@ export class Hud {
       <div id="controls-hint">
         ${
           isTouchDevice()
-            ? 'Joystick jalan &nbsp;•&nbsp; Geser layar lihat sekitar &nbsp;•&nbsp; 🎣 mancing &nbsp;•&nbsp; ☰ menu'
-            : 'WASD gerak &nbsp;•&nbsp; Mouse lihat sekitar &nbsp;•&nbsp; Klik tahan-lepas memancing &nbsp;•&nbsp; Esc buka menu'
+            ? 'Joystick jalan &nbsp;•&nbsp; Geser layar lihat sekitar &nbsp;•&nbsp; 🎣 mancing &nbsp;•&nbsp; ☰ menu &nbsp;•&nbsp; Ketuk prompt buat naik/turun perahu'
+            : 'WASD gerak &nbsp;•&nbsp; Mouse lihat sekitar &nbsp;•&nbsp; Klik tahan-lepas memancing &nbsp;•&nbsp; E naik/turun perahu &nbsp;•&nbsp; Esc buka menu'
         }
       </div>
     `
@@ -70,6 +77,8 @@ export class Hud {
     this.leaderboardList = root.querySelector('#leaderboard-list')
     this.syncStatusEl = root.querySelector('#sync-status')
     this.achievementToast = root.querySelector('#achievement-toast')
+    this.timeWeatherEl = root.querySelector('#time-weather-box')
+    this.interactPrompt = root.querySelector('#interact-prompt')
 
     root.querySelector('#leaderboard-toggle').addEventListener('click', () => {
       playUIClick()
@@ -79,10 +88,16 @@ export class Hud {
       playUIClick()
       this.toggleLeaderboard(false)
     })
-    this.shareBtn.addEventListener('click', () => {
+    this.interactPrompt.addEventListener('click', () => {
       playUIClick()
-      if (this._lastCatch) openShareCard(this._lastCatch, this.username)
+      this._interactHandler?.()
     })
+    if (SHARE_ENABLED) {
+      this.shareBtn.addEventListener('click', () => {
+        playUIClick()
+        if (this._lastCatch) openShareCard(this._lastCatch, this.username)
+      })
+    }
   }
 
   setUsername(name) {
@@ -169,9 +184,26 @@ export class Hud {
       ? 'Bukan ikan...'
       : `${fish.weight.toFixed(2)} kg · +${fish.points} poin`
     this.catchPopup.classList.remove('hidden')
-    this.shareBtn.classList.remove('hidden')
+    if (SHARE_ENABLED) this.shareBtn.classList.remove('hidden')
     clearTimeout(this._catchTimer)
     this._catchTimer = setTimeout(() => this.catchPopup.classList.add('hidden'), 4000)
+  }
+
+  setTimeWeather(label) {
+    if (this.timeWeatherEl.textContent !== label) this.timeWeatherEl.textContent = label
+  }
+
+  // `onInteract` fires when the prompt is tapped/clicked (for touch
+  // players — desktop players use the E key instead, wired in main.js).
+  showInteractPrompt(text, onInteract) {
+    this.interactPrompt.textContent = text
+    this._interactHandler = onInteract
+    this.interactPrompt.classList.remove('hidden')
+  }
+
+  hideInteractPrompt() {
+    this.interactPrompt.classList.add('hidden')
+    this._interactHandler = null
   }
 
   toggleLeaderboard(force) {

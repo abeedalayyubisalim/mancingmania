@@ -25,6 +25,9 @@ function speciesCount(stats) {
 function caughtTier(stats, tier) {
   return FISH_TYPES.filter((f) => f.tier === tier).some((f) => stats.grouped[f.id])
 }
+function caughtDeepSea(stats) {
+  return FISH_TYPES.filter((f) => f.deepSeaOnly).some((f) => stats.grouped[f.id])
+}
 function maxGearTier(stats) {
   const tiers = Object.values(stats.gearTiers || {})
   return tiers.length ? Math.max(...tiers) : 0
@@ -113,6 +116,14 @@ export const ACHIEVEMENTS = [
     desc: 'Tangkap Ikan Emas Legendaris.',
     reward: 500,
     check: (s) => caughtTier(s, 'legendary'),
+  },
+  {
+    id: 'deep_sea',
+    name: 'Penjelajah Laut Dalam',
+    emoji: '🚤',
+    desc: 'Berlayar ke laut lepas dan tangkap spesies yang cuma ada di sana.',
+    reward: 150,
+    check: (s) => caughtDeepSea(s),
   },
   {
     id: 'junk_master',

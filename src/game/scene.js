@@ -165,5 +165,16 @@ export function buildEnvironment(scene) {
   }
   scene.add(decor)
 
-  return { dock }
+  // Handed back so the day/night cycle can drive these over time.
+  return { dock, sun, hemi, ambient }
 }
+
+// World-space spot the little rowboat is tied at (see buildDock above) and
+// where the player boards it from the pier.
+export const BOAT_DOCK_POSITION = { x: 2.6, z: 24 }
+// Where the player ends up back on the pier after disembarking.
+export const PIER_RETURN_POSITION = { x: 0, z: 20 }
+// Beyond this distance from the home island, the water counts as "open
+// sea" — better odds at rare fish, and a couple of species that only turn
+// up out there.
+export const OPEN_SEA_RADIUS = 55

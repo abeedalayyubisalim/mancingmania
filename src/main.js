@@ -2,10 +2,11 @@ import * as THREE from 'three'
 import './style.css'
 import { showAuthGate } from './auth-ui.js'
 import { Hud } from './hud.js'
-import { buildEnvironment } from './game/scene.js'
+import { buildEnvironment, BOAT_DOCK_POSITION, PIER_RETURN_POSITION, OPEN_SEA_RADIUS } from './game/scene.js'
 import { Water } from './game/water.js'
 import { Player } from './game/player.js'
 import { Fishing } from './game/fishing.js'
+import { DayNightCycle } from './game/daynight.js'
 import { fetchProfile, syncPoints, updateAvatar, fetchLeaderboard, fetchInventory, addInventoryItem } from './supabase-client.js'
 import { PauseMenu } from './pause-menu.js'
 import { TouchControls } from './touch-controls.js'
@@ -171,7 +172,7 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
   const scene = new THREE.Scene()
   const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 500)
 
-  buildEnvironment(scene)
+  const { sun, hemi, ambient } = buildEnvironment(scene)
   const water = new Water()
   scene.add(water.mesh)
 
@@ -180,6 +181,62 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
   // (the viewmodel rod) to be rendered.
   scene.add(camera)
 
+  const dayNight = new DayNightCycle({ scene, sun, hemi, ambient, camera })
+
+  // ---- Boat / open-sea zone ---------------------------------------------
+  const BOARD_RADIUS = 4
+  const DISEMBARK_RADIUS = 6
+
+  function boardBoat() {
+    if (player.mode !== 'dock') return
+    const d = Math.hypot(camera.position.x - BOAT_DOCK_POSITION.x, camera.position.z - BOAT_DOCK_POSITION.z)
+    if (d >= BOARD_RADIUS) return
+    unlockAudio()
+    fishing.releaseAction()
+    player.setMode('boat', BOAT_DOCK_POSITION)
+    hud.hideInteractPrompt()
+  }
+
+  function disembark() {
+    if (player.mode !== 'boat') return
+    const d = Math.hypot(camera.position.x - PIER_RETURN_POSITION.x, camera.position.z - PIER_RETURN_POSITION.z)
+    if (d >= DISEMBARK_RADIUS) return
+    fishing.releaseAction()
+    player.setMode('dock', PIER_RETURN_POSITION)
+    hud.hideInteractPrompt()
+  }
+
+  function updateInteractPrompt() {
+    if (player.mode === 'dock') {
+      const d = Math.hypot(camera.position.x - BOAT_DOCK_POSITION.x, camera.position.z - BOAT_DOCK_POSITION.z)
+      if (d < BOARD_RADIUS) {
+        hud.showInteractPrompt(touch ? '🚤 Naik Perahu' : 'Tekan E untuk naik perahu', boardBoat)
+        return
+      }
+    } else if (player.mode === 'boat') {
+      const d = Math.hypot(camera.position.x - PIER_RETURN_POSITION.x, camera.position.z - PIER_RETURN_POSITION.z)
+      if (d < DISEMBARK_RADIUS) {
+        hud.showInteractPrompt(touch ? '🚶 Turun dari Perahu' : 'Tekan E untuk turun dari perahu', disembark)
+        return
+      }
+    }
+    hud.hideInteractPrompt()
+  }
+
+  if (!touch) {
+    window.addEventListener('keydown', (e) => {
+      if (e.code !== 'KeyE' || paused) return
+      if (player.mode === 'dock') boardBoat()
+      else disembark()
+    })
+  }
+
+  function getFishingZone() {
+    const dist = Math.hypot(camera.position.x, camera.position.z)
+    const deepSea = player.mode === 'boat' && dist > OPEN_SEA_RADIUS
+    return { deepSea, deepSeaBonus: deepSea ? 0.5 : 0 }
+  }
+
   const fishing = new Fishing({
     scene,
     camera,
@@ -187,6 +244,9 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
     water,
     domElement: renderer.domElement,
     onStatus: (text, opts) => hud.setStatus(text, opts),
+    getZone: getFishingZone,
+    getExtraBiteSpeedBonus: () => dayNight.getRainBiteBonus(),
+    getExtraLegendaryBonus: () => dayNight.getNightLegendaryBonus(),
     onCatch: (fish) => {
       recordCatch(fish.id, fish.weight)
       if (session?.user) {
@@ -264,6 +324,7 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
     paused = true
     fishing.releaseAction()
     pauseMenu.open()
+    hud.hideInteractPrompt()
     if (document.pointerLockElement === renderer.domElement) document.exitPointerLock()
   }
 
@@ -362,9 +423,12 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
 
     if (!paused) {
       water.update(elapsed)
-      player.update(dt)
+      player.update(dt, 1, water, elapsed)
       fishing.update(dt, elapsed)
+      dayNight.update(dt)
+      updateInteractPrompt()
     }
+    hud.setTimeWeather(dayNight.getLabel())
 
     renderer.render(scene, camera)
   }

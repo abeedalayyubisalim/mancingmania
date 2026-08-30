@@ -3,8 +3,11 @@ import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockCont
 import { settings } from '../settings.js'
 
 // Bounds the player is allowed to walk within (the dock platform + pier).
-const BOUNDS = { minX: -2.6, maxX: 2.6, minZ: 2, maxZ: 24.5 }
+const DOCK_BOUNDS = { minX: -2.6, maxX: 2.6, minZ: 2, maxZ: 24.5 }
+// Once aboard the boat, the whole (large) water plane is navigable.
+const BOAT_BOUNDS = { minX: -185, maxX: 185, minZ: -185, maxZ: 185 }
 const EYE_HEIGHT = 1.7
+const BOAT_EYE_HEIGHT = 1.5
 const _euler = new THREE.Euler(0, 0, 0, 'YXZ')
 
 export class Player {
@@ -14,6 +17,8 @@ export class Player {
     this.controls.pointerSpeed = settings.lookSensitivity
 
     this.camera.position.set(0, EYE_HEIGHT, 5)
+    this.mode = 'dock' // 'dock' | 'boat'
+    this.bounds = DOCK_BOUNDS
 
     this.move = { forward: false, back: false, left: false, right: false }
     // Analog stick input (touch joystick), each in [-1, 1].
@@ -85,6 +90,19 @@ export class Player {
     this.rodTipLocal = new THREE.Vector3(0, 1.3, 0)
   }
 
+  // Switches between walking on the dock (small bounds, fixed eye height)
+  // and piloting the boat (huge bounds spanning the whole water plane, eye
+  // height gently follows the waves). `position` (optional) re-places the
+  // camera immediately, e.g. to the boat's mooring spot or back to the dock.
+  setMode(mode, position = null) {
+    this.mode = mode
+    this.bounds = mode === 'boat' ? BOAT_BOUNDS : DOCK_BOUNDS
+    if (position) {
+      this.camera.position.x = position.x
+      this.camera.position.z = position.z
+    }
+  }
+
   // World-space position of the rod tip, for spawning the fishing line/bobber.
   getRodTipWorld() {
     return this.rodTipLocal.clone().applyMatrix4(this.rodGroup.matrixWorld)
@@ -109,15 +127,19 @@ export class Player {
     this.camera.quaternion.setFromEuler(_euler)
   }
 
-  update(dt, bobAmount = 1) {
-    const speed = 3.2
-    const damping = 10
+  update(dt, bobAmount = 1, water = null, elapsed = 0) {
+    const speed = this.mode === 'boat' ? 7 : 3.2
+    const damping = this.mode === 'boat' ? 3.5 : 10
 
     const forward = new THREE.Vector3()
     this.camera.getWorldDirection(forward)
     forward.y = 0
     forward.normalize()
-    const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).negate()
+    // NOTE: forward × up already points to the camera's true right when
+    // facing -Z (three.js's default forward) with +Y up — no .negate()
+    // needed. (An earlier version of this code negated it, which quietly
+    // swapped A/D — and the touch joystick's left/right — the whole time.)
+    const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0))
 
     const wish = new THREE.Vector3()
     if (this.move.forward) wish.add(forward)
@@ -132,14 +154,19 @@ export class Player {
     this.velocity.lerp(wish, Math.min(1, damping * dt))
 
     const pos = this.camera.position
-    pos.x = THREE.MathUtils.clamp(pos.x + this.velocity.x * dt, BOUNDS.minX, BOUNDS.maxX)
-    pos.z = THREE.MathUtils.clamp(pos.z + this.velocity.z * dt, BOUNDS.minZ, BOUNDS.maxZ)
+    pos.x = THREE.MathUtils.clamp(pos.x + this.velocity.x * dt, this.bounds.minX, this.bounds.maxX)
+    pos.z = THREE.MathUtils.clamp(pos.z + this.velocity.z * dt, this.bounds.minZ, this.bounds.maxZ)
 
-    // Subtle walk bob.
-    const moving = wish.lengthSq() > 0
-    this._bobT = (this._bobT ?? 0) + (moving ? dt * 8 : dt * 2)
-    const bob = moving ? Math.sin(this._bobT) * 0.03 : Math.sin(this._bobT) * 0.01
-    pos.y = EYE_HEIGHT + bob * bobAmount
+    if (this.mode === 'boat' && water) {
+      // Ride the waves instead of the little idle walk-bob.
+      pos.y = water.heightAt(pos.x, pos.z, elapsed) + BOAT_EYE_HEIGHT
+    } else {
+      // Subtle walk bob.
+      const moving = wish.lengthSq() > 0
+      this._bobT = (this._bobT ?? 0) + (moving ? dt * 8 : dt * 2)
+      const bob = moving ? Math.sin(this._bobT) * 0.03 : Math.sin(this._bobT) * 0.01
+      pos.y = EYE_HEIGHT + bob * bobAmount
+    }
   }
 
   dispose() {

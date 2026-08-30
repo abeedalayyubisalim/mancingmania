@@ -50,6 +50,10 @@ export function showTutorial({ touch, onDone }) {
           <div><b>Menggulung Ikan</b><br>Ikuti penanda yang bergerak bolak-balik — ${touch ? 'ketuk' : 'klik'} tepat saat berada di zona hijau, ulangi sampai ikannya berhasil ditangkap.</div>
         </div>
         <div class="tutorial-step">
+          <span class="tutorial-step-icon">🚤</span>
+          <div><b>Naik Perahu</b><br>Dekati perahu di ujung dermaga buat berlayar ke laut lepas — ikan langka & spesies baru cuma muncul di sana. ${touch ? 'Ketuk prompt di layar' : 'Tekan E'} buat naik/turun.</div>
+        </div>
+        <div class="tutorial-step">
           <span class="tutorial-step-icon">🛒</span>
           <div><b>Toko & Level</b><br>Poin dari tangkapan menaikkan level & dompetmu — belanjakan di Toko lewat menu jeda buat perlengkapan yang lebih baik.</div>
         </div>
