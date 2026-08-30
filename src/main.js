@@ -6,22 +6,39 @@ import { buildEnvironment } from './game/scene.js'
 import { Water } from './game/water.js'
 import { Player } from './game/player.js'
 import { Fishing } from './game/fishing.js'
-import { submitScore, fetchLeaderboard, addInventoryItem } from './supabase-client.js'
+import { fetchProfile, syncPoints, fetchLeaderboard, addInventoryItem } from './supabase-client.js'
 import { PauseMenu } from './pause-menu.js'
 import { TouchControls } from './touch-controls.js'
 import { isTouchDevice } from './settings.js'
 import { recordCatch } from './collection.js'
 import { getCosmeticBadge } from './store.js'
+import { getLevelInfo } from './leveling.js'
+import { loadLocalWallet, saveLocalWallet } from './wallet-storage.js'
 
 const app = document.querySelector('#app')
 
 async function main() {
   const { session, username, guest } = await showAuthGate(app)
-  startGame({ session, username, guest })
+
+  // Load the player's existing lifetime points + wallet so they don't
+  // reset to 0 every time you log back in — logged-in players get this
+  // from Supabase, guests get it from this browser's local storage.
+  let totalPoints = 0
+  let wallet = 0
+  if (session?.user) {
+    const profile = await fetchProfile(session.user.id)
+    totalPoints = profile.points
+    wallet = profile.wallet
+  } else {
+    const local = loadLocalWallet()
+    totalPoints = local.points
+    wallet = local.wallet
+  }
+
+  startGame({ session, username, guest, totalPoints, wallet })
 }
 
-function startGame({ session, username, guest }) {
-  let score = 0
+function startGame({ session, username, guest, totalPoints, wallet }) {
   const touch = isTouchDevice()
 
   app.innerHTML = `
@@ -36,10 +53,18 @@ function startGame({ session, username, guest }) {
   const hud = new Hud(document.querySelector('#hud-root'))
   hud.setUsername(username + (guest ? ' (Tamu)' : ''))
   hud.setBadge(getCosmeticBadge())
-  hud.setScore(score)
+  hud.setScore(wallet)
+  hud.setLevel(getLevelInfo(totalPoints).level)
   hud.onOpenLeaderboard = async () => {
     const rows = await fetchLeaderboard(10)
     hud.renderLeaderboard(rows, username)
+  }
+
+  // Persists points/wallet to Supabase (logged in) or this browser (guest)
+  // whenever either one changes — catch, or store purchase.
+  function persistPoints() {
+    if (session?.user) syncPoints(session.user.id, username, totalPoints, wallet).catch(() => {})
+    else saveLocalWallet(totalPoints, wallet)
   }
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
@@ -72,9 +97,14 @@ function startGame({ session, username, guest }) {
         addInventoryItem(session.user.id, fish.id, fish.weight).catch(() => {})
       }
       if (!fish.junk) {
-        score += fish.points
-        hud.setScore(score)
-        if (session?.user) submitScore(session.user.id, username, score)
+        totalPoints += fish.points
+        wallet += fish.points
+        const prevLevel = getLevelInfo(totalPoints - fish.points).level
+        const newLevel = getLevelInfo(totalPoints).level
+        hud.setScore(wallet)
+        hud.setLevel(newLevel)
+        if (newLevel > prevLevel) hud.showLevelUp(newLevel)
+        persistPoints()
       }
       hud.showCatch(fish)
     },
@@ -87,11 +117,13 @@ function startGame({ session, username, guest }) {
   const pauseMenu = new PauseMenu(menuRoot, {
     username,
     userId: session?.user?.id ?? null,
-    getScore: () => score,
+    getScore: () => wallet,
+    getTotalPoints: () => totalPoints,
     spendScore: (amount) => {
-      if (score < amount) return false
-      score -= amount
-      hud.setScore(score)
+      if (wallet < amount) return false
+      wallet -= amount
+      hud.setScore(wallet)
+      persistPoints()
       return true
     },
     onSensitivityChange: (v) => {

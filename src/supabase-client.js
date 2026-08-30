@@ -42,10 +42,15 @@ export async function signUp(username, password) {
 
   // Seed a leaderboard row for this new user.
   if (data.user) {
-    await supabase.from('leaderboard').upsert(
-      { id: data.user.id, name: username.trim(), points: 0 },
-      { onConflict: 'id' }
-    )
+    const { error: seedError } = await supabase
+      .from('leaderboard')
+      .upsert({ id: data.user.id, name: username.trim(), points: 0, wallet: 0 }, { onConflict: 'id' })
+    if (seedError) {
+      // Older table without `wallet` — retry without it.
+      await supabase
+        .from('leaderboard')
+        .upsert({ id: data.user.id, name: username.trim(), points: 0 }, { onConflict: 'id' })
+    }
   }
   return data
 }
@@ -74,35 +79,89 @@ export async function getMyUsername(session) {
   return session.user.user_metadata?.username ?? session.user.email.split('@')[0]
 }
 
-// Saves the score only if it beats the player's current best (keeps a
-// "high score" leaderboard rather than the most recent score).
-export async function submitScore(userId, username, score) {
-  if (!supabase) return
-  const { data: existing } = await supabase
+// `points` = lifetime total ever earned (only grows, used for the
+// leaderboard ranking AND the player's level). `wallet` = spendable
+// balance for the store (grows on catches, shrinks on purchases) — kept
+// separate so spending gear never costs you rank or level.
+export async function fetchProfile(userId) {
+  if (!supabase || !userId) return { points: 0, wallet: 0 }
+  let { data, error } = await supabase
     .from('leaderboard')
-    .select('points')
+    .select('name, points, wallet')
     .eq('id', userId)
     .maybeSingle()
+  if (error) {
+    ;({ data, error } = await supabase
+      .from('leaderboard')
+      .select('name, points')
+      .eq('id', userId)
+      .maybeSingle())
+  }
+  if (error || !data) return { points: 0, wallet: 0 }
+  return { points: data.points ?? 0, wallet: data.wallet ?? data.points ?? 0 }
+}
 
-  if (existing && existing.points >= score) return
-
-  await supabase.from('leaderboard').upsert(
-    { id: userId, name: username, points: score, created_at: new Date().toISOString() },
-    { onConflict: 'id' }
-  )
+// Call whenever the player's lifetime total and/or wallet changes (catch,
+// purchase) — keeps both in sync with Supabase so nothing resets on login.
+export async function syncPoints(userId, username, points, wallet) {
+  if (!supabase || !userId) return
+  const { error } = await supabase
+    .from('leaderboard')
+    .upsert({ id: userId, name: username, points, wallet }, { onConflict: 'id' })
+  if (error) {
+    // Older table without `wallet` — retry without it.
+    await supabase.from('leaderboard').upsert({ id: userId, name: username, points }, { onConflict: 'id' })
+  }
 }
 
 export async function fetchLeaderboard(limit = 10) {
   if (!supabase) return []
   const { data, error } = await supabase
     .from('leaderboard')
-    .select('name, points')
+    .select('id, name, points')
     .order('points', { ascending: false })
     .limit(limit)
   if (error) return []
   // Normalize to {username, score} so the rest of the app doesn't need to
   // know about this table's actual column names.
-  return data.map((row) => ({ username: row.name, score: row.points }))
+  return data.map((row) => ({ id: row.id, username: row.name, score: row.points }))
+}
+
+// Looks up one player's public profile by (exact) username — used when a
+// player is opened from a search result or a leaderboard row.
+export async function fetchPublicProfileById(userId) {
+  if (!supabase || !userId) return null
+  const { data, error } = await supabase
+    .from('leaderboard')
+    .select('id, name, points')
+    .eq('id', userId)
+    .maybeSingle()
+  if (error || !data) return null
+  return data
+}
+
+export async function fetchPublicProfileByName(username) {
+  if (!supabase || !username) return null
+  const { data, error } = await supabase
+    .from('leaderboard')
+    .select('id, name, points')
+    .ilike('name', username)
+    .maybeSingle()
+  if (error || !data) return null
+  return data
+}
+
+// Free-text player search (for the profile "cari pemain" box).
+export async function searchPlayers(query, limit = 8) {
+  if (!supabase || !query || !query.trim()) return []
+  const { data, error } = await supabase
+    .from('leaderboard')
+    .select('id, name, points')
+    .ilike('name', `%${query.trim()}%`)
+    .order('points', { ascending: false })
+    .limit(limit)
+  if (error) return []
+  return data
 }
 
 // ---------------------------------------------------------------------------

@@ -9,8 +9,10 @@ export class Hud {
       <div id="crosshair"></div>
       <div id="top-bar">
         <div id="score-box">🪙 <span id="score-value">0</span></div>
+        <div id="level-box">⭐ Lv.<span id="level-value">1</span></div>
         <div id="user-box"><span id="username-value"></span><span id="user-badge"></span></div>
       </div>
+      <div id="levelup-toast" class="hidden"></div>
       <div id="status-box">
         <div id="status-text">Klik untuk mulai memancing</div>
         <div id="power-bar"><div id="power-fill"></div></div>
@@ -37,6 +39,8 @@ export class Hud {
     `
 
     this.scoreEl = root.querySelector('#score-value')
+    this.levelEl = root.querySelector('#level-value')
+    this.levelupToast = root.querySelector('#levelup-toast')
     this.usernameEl = root.querySelector('#username-value')
     this.badgeEl = root.querySelector('#user-badge')
     this.statusText = root.querySelector('#status-text')
@@ -69,6 +73,17 @@ export class Hud {
 
   setScore(score) {
     this.scoreEl.textContent = score
+  }
+
+  setLevel(level) {
+    this.levelEl.textContent = level
+  }
+
+  showLevelUp(level) {
+    this.levelupToast.textContent = `⭐ Naik ke Level ${level}!`
+    this.levelupToast.classList.remove('hidden')
+    clearTimeout(this._levelupTimer)
+    this._levelupTimer = setTimeout(() => this.levelupToast.classList.add('hidden'), 2600)
   }
 
   setStatus(text, opts = {}) {

@@ -11,9 +11,15 @@ create table if not exists public.leaderboard (
   created_at timestamptz not null default now()
 );
 
+-- Already have the table? Run this line too — it adds the spendable
+-- "wallet" balance (separate from lifetime points/level) used by the
+-- store. Safe to run even if the column already exists.
+alter table public.leaderboard add column if not exists wallet numeric not null default 0;
+
 alter table public.leaderboard enable row level security;
 
--- Anyone (including anonymous visitors) can read the leaderboard.
+-- Anyone (including anonymous visitors) can read the leaderboard — also
+-- needed so players can look up and view each other's public profile.
 create policy "Leaderboard is publicly readable"
   on public.leaderboard for select
   using (true);
@@ -49,11 +55,19 @@ alter table public.inventory add column if not exists berat numeric;
 
 alter table public.inventory enable row level security;
 
--- A player can only see their own inventory (unlike the public leaderboard).
+-- Anyone can view any player's catches — needed so a player's fish
+-- collection shows up on their public profile (search / leaderboard).
+-- If you'd rather keep collections private, use the commented-out
+-- "own inventory only" policy below instead.
 drop policy if exists "Players can view their own inventory" on public.inventory;
-create policy "Players can view their own inventory"
+drop policy if exists "Inventory is publicly readable" on public.inventory;
+create policy "Inventory is publicly readable"
   on public.inventory for select
-  using (auth.uid()::text = user_id);
+  using (true);
+
+-- create policy "Players can view their own inventory"
+--   on public.inventory for select
+--   using (auth.uid()::text = user_id);
 
 -- A player can only add items to their own inventory.
 drop policy if exists "Players can add to their own inventory" on public.inventory;
