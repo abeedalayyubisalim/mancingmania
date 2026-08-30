@@ -234,7 +234,13 @@ export class PauseMenu {
             <button id="profile-search-btn">🔍</button>
           </div>
           <div id="profile-search-results"></div>
-          <div id="profile-avatar-preview"><canvas id="profile-avatar-canvas"></canvas></div>
+          <div class="profile-hero">
+            <div class="profile-hero-left">
+              <div id="profile-avatar-preview"><canvas id="profile-avatar-canvas"></canvas></div>
+              <div id="profile-hero-badge"></div>
+            </div>
+            <div id="profile-hero-info" class="profile-hero-info"></div>
+          </div>
           <div id="profile-body"></div>
           <button class="pause-btn back-btn" data-back="main">← Kembali</button>
         </div>
@@ -424,9 +430,12 @@ export class PauseMenu {
   _showView(name) {
     Object.entries(this.views).forEach(([key, el]) => el.classList.toggle('hidden', key !== name))
     // The match-detail view uses the same wider Dota-2-style roster layout
-    // as the live end-of-match popup — #pause-card is normally a narrow
-    // 300px column, so it gets a one-off widen for just this view.
-    this.el.querySelector('#pause-card')?.classList.toggle('pause-card-wide', name === 'match-detail')
+    // as the live end-of-match popup, and the profile view needs room for
+    // its two-column "character left, stats right" hero layout — both get
+    // a one-off widen of the normally-narrow 300px #pause-card.
+    const card = this.el.querySelector('#pause-card')
+    card?.classList.toggle('pause-card-wide', name === 'match-detail')
+    card?.classList.toggle('pause-card-xwide', name === 'profile')
   }
 
   // A generic "not built yet" placeholder (Survival, Multiplayer for now)
@@ -841,8 +850,11 @@ export class PauseMenu {
   _ensureAvatarPreview() {
     if (this._avatarPreview) return this._avatarPreview
     const canvas = this.el.querySelector('#profile-avatar-canvas')
-    const width = 120
-    const height = 150
+    // Bigger now that the profile view has a dedicated left column for it
+    // (Dota-2-style hero layout) — same 0.8 aspect ratio as before so the
+    // camera framing doesn't need to change, just scaled up.
+    const width = 200
+    const height = 250
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.setSize(width, height, false)
@@ -887,6 +899,8 @@ export class PauseMenu {
     const isSelf = !targetId && !targetName
     const body = this.el.querySelector('#profile-body')
     body.innerHTML = '<p class="gallery-status">Memuat profil...</p>'
+    this.el.querySelector('#profile-hero-badge').innerHTML = ''
+    this.el.querySelector('#profile-hero-info').innerHTML = ''
 
     let username, totalPoints, wallet, targetUserId, avatarForDisplay
 
@@ -1030,13 +1044,25 @@ export class PauseMenu {
           .join('')
       : `<p class="gallery-status">${isSelf ? 'Belum ada riwayat pertandingan multiplayer.' : 'Belum ada riwayat pertandingan.'}</p>`
 
-    body.innerHTML = `
+    // Dota-2-style hero layout: the big rotating 3D preview + a small
+    // avatar badge sit in the left column (#profile-hero-badge, next to
+    // #profile-avatar-preview — see the view's static markup above);
+    // name/level/stats sit in the right column (#profile-hero-info).
+    // Everything else (collection/gear grids, match history) stays full
+    // width below, in #profile-body, same as before.
+    const heroBadge = this.el.querySelector('#profile-hero-badge')
+    const heroInfo = this.el.querySelector('#profile-hero-info')
+
+    heroBadge.innerHTML = `
+      <div class="profile-avatar-wrap">
+        <div class="profile-avatar">${escapeHtml(avatarForDisplay)}</div>
+        <span class="profile-online-dot ${targetUserId && isOnline(targetUserId) ? 'online' : ''}"></span>
+        ${isSelf ? '<button id="profile-avatar-edit" class="avatar-edit-btn" title="Ganti foto profil">✏️</button>' : ''}
+      </div>
+    `
+
+    heroInfo.innerHTML = `
       <div class="profile-header">
-        <div class="profile-avatar-wrap">
-          <div class="profile-avatar">${escapeHtml(avatarForDisplay)}</div>
-          <span class="profile-online-dot ${targetUserId && isOnline(targetUserId) ? 'online' : ''}"></span>
-          ${isSelf ? '<button id="profile-avatar-edit" class="avatar-edit-btn" title="Ganti foto profil">✏️</button>' : ''}
-        </div>
         <div>
           <h3>${escapeHtml(username)}</h3>
           <div class="profile-level">⭐ Level ${info.level}</div>
@@ -1054,6 +1080,9 @@ export class PauseMenu {
         ${wallet !== null ? `<div class="profile-stat"><span>🪙 Dompet</span><b>${wallet}</b></div>` : ''}
         <div class="profile-stat"><span>🐟 Koleksi</span><b>${caughtCount}/${totalSpecies}</b></div>
       </div>
+    `
+
+    body.innerHTML = `
       <h4>Koleksi Ikan</h4>
       <div class="profile-mini-grid">${speciesGrid}</div>
       <h4>Inventaris</h4>
@@ -1077,10 +1106,10 @@ export class PauseMenu {
     body.querySelectorAll('.match-history-row').forEach((btn) => {
       btn.addEventListener('click', () => this._showMatchDetail(btn.dataset.match, targetUserId))
     })
-    const editBtn = body.querySelector('#profile-avatar-edit')
+    const editBtn = heroBadge.querySelector('#profile-avatar-edit')
     if (editBtn) editBtn.addEventListener('click', () => this._showAvatarPicker())
 
-    const friendBtn = body.querySelector('#profile-friend-btn')
+    const friendBtn = heroInfo.querySelector('#profile-friend-btn')
     if (friendBtn) {
       friendBtn.addEventListener('click', async () => {
         const friendIds = await this._ensureFriendIds()

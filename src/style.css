@@ -708,6 +708,14 @@ html, body {
   width: 460px;
 }
 
+/* Wider still for the profile view's two-column "character left, stats
+   right" hero layout — not full-screen, just enough room to breathe.
+   #pause-card's base max-width:88vw (below) still caps it on small
+   screens. */
+#pause-card.pause-card-xwide {
+  width: 640px;
+}
+
 #pause-card h2 {
   margin: 0 0 6px;
   font-size: 22px;
@@ -1230,22 +1238,63 @@ html, body {
 
 /* Rotating character preview — same model multiplayer shows for other
    players, wearing whatever this profile's owner actually has equipped. */
+/* Dota-2-style hero layout: character preview on the left, name/level/
+   stats on the right. Stacks back to a single column on narrow screens
+   since #pause-card.pause-card-xwide still respects max-width:88vw. */
+.profile-hero {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  text-align: left;
+  margin-bottom: 14px;
+}
+
+.profile-hero-left {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.profile-hero-info {
+  flex: 1;
+  min-width: 0;
+  padding-top: 6px;
+}
+
+@media (max-width: 560px) {
+  .profile-hero {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+  .profile-hero-info {
+    width: 100%;
+  }
+}
+
 #profile-avatar-preview {
   display: flex;
   justify-content: center;
-  margin-bottom: 8px;
 }
 
 #profile-avatar-canvas {
-  width: 120px;
-  height: 150px;
+  width: 200px;
+  height: 250px;
   border-radius: 10px;
   background: radial-gradient(ellipse at center, rgba(55, 163, 224, 0.18), transparent 70%);
 }
 
+#profile-hero-badge {
+  display: flex;
+  justify-content: center;
+}
+
 .profile-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 12px;
   margin-bottom: 10px;
 }
