@@ -9,8 +9,9 @@
 // ---------------------------------------------------------------------------
 import { createClient } from '@supabase/supabase-js'
 
-export const SUPABASE_URL = 'https://YOUR-PROJECT.supabase.co'
-export const SUPABASE_ANON_KEY = 'YOUR-ANON-PUBLIC-KEY'
+export const SUPABASE_URL = 'https://riugacrmejboxnpcawpd.supabase.co'
+export const SUPABASE_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJpdWdhY3JtZWpib3hucGNhd3BkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgwNDI1ODYsImV4cCI6MjEwMzYxODU4Nn0.hh5xE1FGm8uqiunj9dkSnU-7Sai7g6hIepq_9Iar6LA'
 
 export const isSupabaseConfigured =
   !SUPABASE_URL.includes('YOUR-PROJECT') && !SUPABASE_ANON_KEY.includes('YOUR-ANON')
