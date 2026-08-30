@@ -37,6 +37,7 @@ import * as THREE from 'three'
 import { buildCharacterAvatar } from './game/character.js'
 import { DEFAULT_ROD_COLOR } from './game/player.js'
 import { DEFAULT_AVATAR, AVATAR_OPTIONS } from './avatar.js'
+import { renderResultRoster, renderPlayerCatchList } from './match-ui-shared.js'
 import { ACHIEVEMENTS, evaluate as evaluateAchievements } from './achievements.js'
 import { playUIClick, playPurchase, setSfxVolume, setMusicVolume, setMusicMuted } from './audio.js'
 
@@ -242,9 +243,16 @@ export class PauseMenu {
           <div id="avatar-picker-grid"></div>
           <button class="pause-btn back-btn" data-back="profile">← Kembali</button>
         </div>
-        <div id="pause-view-match-detail" class="pause-view hidden">
-          <div id="match-detail-body"></div>
-          <button class="pause-btn back-btn" data-back="profile">← Kembali ke Profil</button>
+        <div id="pause-view-match-detail" class="pause-view match-detail-view hidden">
+          <div class="mp-results-roster-view">
+            <div id="match-detail-body"></div>
+            <button class="pause-btn back-btn" data-back="profile">← Kembali ke Profil</button>
+          </div>
+          <div class="mp-results-detail-view hidden">
+            <button class="mp-player-back">‹ Kembali ke Hasil</button>
+            <div class="mp-player-detail-header"></div>
+            <div class="mp-player-catch-list"></div>
+          </div>
         </div>
       </div>
     `
@@ -329,6 +337,17 @@ export class PauseMenu {
     this.el
       .querySelector('#gallery-detail-back')
       .addEventListener('click', () => this._showView(this._detailBackView))
+    // Match-detail's roster ↔ per-player-catch-list toggle lives inside a
+    // single pause-view (not a separate one _showView can target), so its
+    // back button is bound once here rather than re-bound (and duplicated)
+    // every time _showMatchDetail() re-renders the roster.
+    {
+      const matchDetailView = this.el.querySelector('#pause-view-match-detail')
+      matchDetailView.querySelector('.mp-player-back').addEventListener('click', () => {
+        matchDetailView.querySelector('.mp-results-detail-view').classList.add('hidden')
+        matchDetailView.querySelector('.mp-results-roster-view').classList.remove('hidden')
+      })
+    }
 
     this.el.querySelector('#profile-search-btn').addEventListener('click', () => this._searchPlayers())
     this.el.querySelector('#profile-search-input').addEventListener('keydown', (e) => {
@@ -404,6 +423,10 @@ export class PauseMenu {
 
   _showView(name) {
     Object.entries(this.views).forEach(([key, el]) => el.classList.toggle('hidden', key !== name))
+    // The match-detail view uses the same wider Dota-2-style roster layout
+    // as the live end-of-match popup — #pause-card is normally a narrow
+    // 300px column, so it gets a one-off widen for just this view.
+    this.el.querySelector('#pause-card')?.classList.toggle('pause-card-wide', name === 'match-detail')
   }
 
   // A generic "not built yet" placeholder (Survival, Multiplayer for now)
@@ -1105,33 +1128,47 @@ export class PauseMenu {
   }
 
   // Full scoreboard for one match from a Profile's "Riwayat Pertandingan"
-  // list — reuses the same .mp-result-row look as the live end-of-match
-  // popup (see multiplayer-ui.js) so a past match and a just-finished one
-  // read identically.
+  // list — reuses the same Dota-2-style roster rows and per-player catch
+  // drill-down as the live end-of-match popup (see multiplayer-ui.js /
+  // match-ui-shared.js) so a past match and a just-finished one read
+  // identically. Old rows persisted before the per-fish catch list existed
+  // have `catches` as a plain number, not an array — renderPlayerCatchList
+  // degrades that gracefully (shows a "detail unavailable" note) instead of
+  // crashing, and the roster row itself just won't be clickable for them.
   _showMatchDetail(matchId, viewerUserId) {
     const match = this._profileMatches?.find((m) => m.id === matchId)
     if (!match) return
     this._showView('match-detail')
-    const rows = match.results
-      .map((r, i) => {
-        const isWinner = r.id === match.winner_id
-        const isViewer = r.id === viewerUserId
-        return `
-          <div class="mp-result-row ${isWinner ? 'winner' : ''} ${isViewer ? 'me' : ''}">
-            <span class="mp-result-rank">${isWinner ? '🏆' : `#${i + 1}`}</span>
-            <span class="mp-result-name">${escapeHtml(r.name)}</span>
-            <span class="mp-result-catches">🐟 ${r.catches}</span>
-            <span class="mp-result-points">${r.points} poin</span>
-          </div>
-        `
-      })
-      .join('')
+    const view = this.el.querySelector('#pause-view-match-detail')
+    const rosterView = view.querySelector('.mp-results-roster-view')
+    const detailView = view.querySelector('.mp-results-detail-view')
+    rosterView.classList.remove('hidden')
+    detailView.classList.add('hidden')
+
     const date = new Date(match.created_at).toLocaleString('id-ID')
     this.el.querySelector('#match-detail-body').innerHTML = `
       <h3>${match.mode === 'time' ? '⏱️ Mode Waktu' : '🎯 Mode Jenis Ikan'}</h3>
       <p class="detail-latin">${escapeHtml(date)} · Room ${escapeHtml(match.room_code)}</p>
-      <div class="mp-results-list">${rows}</div>
+      <div class="mp-results-list">${renderResultRoster(match.results, { winnerId: match.winner_id, localId: viewerUserId })}</div>
     `
+
+    const detailHeader = view.querySelector('.mp-player-detail-header')
+    const detailList = view.querySelector('.mp-player-catch-list')
+    view.querySelectorAll('.mp-result-row-wide[data-player]').forEach((btn) => {
+      if (btn.disabled) return
+      btn.addEventListener('click', () => {
+        const player = match.results.find((r) => r.id === btn.dataset.player)
+        if (!player) return
+        detailHeader.innerHTML = `
+          <span class="mp-result-avatar">${escapeHtml(player.avatar || '🎣')}</span>
+          <span class="mp-result-name">${escapeHtml(player.name)}${player.id === viewerUserId ? ' (Kamu)' : ''}</span>
+          <span class="mp-result-points-big">${player.points}<small> poin</small></span>
+        `
+        detailList.innerHTML = renderPlayerCatchList(player)
+        rosterView.classList.add('hidden')
+        detailView.classList.remove('hidden')
+      })
+    })
   }
 
   _showAvatarPicker() {

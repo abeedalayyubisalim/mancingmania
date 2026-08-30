@@ -87,7 +87,7 @@ export class MultiplayerSession {
     this.matchActive = false
     this.matchEnded = false
     this.remoteAvatars = new Map() // id -> { group, sprite, setRodColor, setCosmetics, target }
-    this.catchLog = new Map() // id -> { name, points, catches }
+    this.catchLog = new Map() // id -> { name, avatar, points, catches: [{fishId,fishName,weight,points}] }
     this._posTimer = 0
     this._matchEndAt = null
     this._endTriggered = false
@@ -197,7 +197,8 @@ export class MultiplayerSession {
     this._endTriggered = false
     this._reportedEnd = false
     this.catchLog.clear()
-    for (const p of this.roster) this.catchLog.set(p.id, { name: p.username ?? 'Pemain', points: 0, catches: 0 })
+    for (const p of this.roster)
+      this.catchLog.set(p.id, { name: p.username ?? 'Pemain', avatar: p.avatar ?? null, points: 0, catches: [] })
 
     const step = () => {
       const msLeft = startAt - Date.now()
@@ -223,6 +224,7 @@ export class MultiplayerSession {
     broadcastRoom('catch', {
       id: this.identity.id,
       name: this.identity.username,
+      avatar: this.identity.avatar,
       fishId: fish.id,
       fishName: fish.name,
       weight: fish.weight,
@@ -232,10 +234,11 @@ export class MultiplayerSession {
 
   _handleCatch(payload) {
     if (!this.matchActive || this.matchEnded) return
-    const entry = this.catchLog.get(payload.id) ?? { name: payload.name ?? 'Pemain', points: 0, catches: 0 }
+    const entry = this.catchLog.get(payload.id) ?? { name: payload.name ?? 'Pemain', avatar: payload.avatar ?? null, points: 0, catches: [] }
     entry.points += payload.points
-    entry.catches += 1
+    entry.catches.push({ fishId: payload.fishId, fishName: payload.fishName, weight: payload.weight, points: payload.points })
     entry.name = payload.name ?? entry.name
+    entry.avatar = payload.avatar ?? entry.avatar
     this.catchLog.set(payload.id, entry)
 
     if (this.mode === 'fish' && payload.fishId === this.params.fishId && payload.id === this.identity.id) {
@@ -314,7 +317,7 @@ export class MultiplayerSession {
     if (this._endTriggered) return
     this._endTriggered = true
     const results = [...this.catchLog.entries()]
-      .map(([id, e]) => ({ id, name: e.name, points: e.points, catches: e.catches }))
+      .map(([id, e]) => ({ id, name: e.name, avatar: e.avatar, points: e.points, catches: e.catches }))
       .sort((a, b) => b.points - a.points)
     const finalWinnerId = winnerId ?? results[0]?.id ?? null
     broadcastRoom('end', { results, winnerId: finalWinnerId, mode: this.mode })
