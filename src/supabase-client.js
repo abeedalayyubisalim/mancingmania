@@ -6,16 +6,11 @@
 //    "anon public" key into the two constants below.
 // 3. Run the SQL in supabase_schema.sql (Supabase dashboard -> SQL editor)
 //    to create the `leaderboard` table and its security policies.
-//
-// This project's `leaderboard` table uses these columns:
-//   id (text, the auth user's uuid stored as text), name (text),
-//   points (numeric), created_at (timestamptz)
 // ---------------------------------------------------------------------------
 import { createClient } from '@supabase/supabase-js'
 
-export const SUPABASE_URL = 'https://riugacrmejboxnpcawpd.supabase.co'
-export const SUPABASE_ANON_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJpdWdhY3JtZWpib3hucGNhd3BkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgwNDI1ODYsImV4cCI6MjEwMzYxODU4Nn0.hh5xE1FGm8uqiunj9dkSnU-7Sai7g6hIepq_9Iar6LA'
+export const SUPABASE_URL = 'https://YOUR-PROJECT.supabase.co'
+export const SUPABASE_ANON_KEY = 'YOUR-ANON-PUBLIC-KEY'
 
 export const isSupabaseConfigured =
   !SUPABASE_URL.includes('YOUR-PROJECT') && !SUPABASE_ANON_KEY.includes('YOUR-ANON')
@@ -43,7 +38,7 @@ export async function signUp(username, password) {
   // Seed a leaderboard row for this new user.
   if (data.user) {
     await supabase.from('leaderboard').upsert(
-      { id: data.user.id, name: username.trim(), points: 0 },
+      { id: data.user.id, username: username.trim(), score: 0 },
       { onConflict: 'id' }
     )
   }
@@ -80,14 +75,14 @@ export async function submitScore(userId, username, score) {
   if (!supabase) return
   const { data: existing } = await supabase
     .from('leaderboard')
-    .select('points')
+    .select('score')
     .eq('id', userId)
     .maybeSingle()
 
-  if (existing && existing.points >= score) return
+  if (existing && existing.score >= score) return
 
   await supabase.from('leaderboard').upsert(
-    { id: userId, name: username, points: score, created_at: new Date().toISOString() },
+    { id: userId, username, score, updated_at: new Date().toISOString() },
     { onConflict: 'id' }
   )
 }
@@ -96,11 +91,9 @@ export async function fetchLeaderboard(limit = 10) {
   if (!supabase) return []
   const { data, error } = await supabase
     .from('leaderboard')
-    .select('name, points')
-    .order('points', { ascending: false })
+    .select('username, score')
+    .order('score', { ascending: false })
     .limit(limit)
   if (error) return []
-  // Normalize to {username, score} so the rest of the app doesn't need to
-  // know about this table's actual column names.
-  return data.map((row) => ({ username: row.name, score: row.points }))
+  return data
 }
