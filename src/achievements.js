@@ -181,6 +181,35 @@ export const ACHIEVEMENTS = [
     reward: 30,
     check: (s) => (s.cosmeticsCount ?? 0) >= 1,
   },
+  // Sub-tahap Survival-C+: one badge per Survival difficulty, unlocked by
+  // actually surviving all 10 days at that level (see game/survival.js's
+  // DIFFICULTIES and survival-storage.js's per-difficulty win flags —
+  // `s.survivalWins` is sourced from there in main.js's
+  // currentAchievementStats, local-only for now like the rest of Survival).
+  {
+    id: 'survival_easy',
+    name: 'Selamat dari Pulau (Mudah)',
+    emoji: '🏝️',
+    desc: 'Bertahan penuh 10 hari di Survival tingkat Mudah.',
+    reward: 150,
+    check: (s) => Boolean(s.survivalWins?.easy),
+  },
+  {
+    id: 'survival_normal',
+    name: 'Selamat dari Pulau (Normal)',
+    emoji: '⚖️',
+    desc: 'Bertahan penuh 10 hari di Survival tingkat Normal.',
+    reward: 250,
+    check: (s) => Boolean(s.survivalWins?.normal),
+  },
+  {
+    id: 'survival_hard',
+    name: 'Selamat dari Pulau (Sulit)',
+    emoji: '🔥',
+    desc: 'Bertahan penuh 10 hari di Survival tingkat Sulit.',
+    reward: 450,
+    check: (s) => Boolean(s.survivalWins?.hard),
+  },
 ]
 
 // Returns the subset of ACHIEVEMENTS whose condition is currently met.

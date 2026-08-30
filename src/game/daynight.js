@@ -44,6 +44,11 @@ export class DayNightCycle {
     this.cycleSeconds = cycleSeconds
     this.elapsed = this.cycleSeconds * 0.3 // start mid-morning, not at midnight
     this.weather = 'clear'
+    // Chance of a clear spell turning to rain each time _updateWeather's
+    // timer rolls over — overridable per Survival difficulty (see
+    // game/survival.js's DIFFICULTIES) via setRainChance, and restored to
+    // this default when a run ends.
+    this.rainChance = 0.35
     this._weatherTimer = 45 + Math.random() * 60
     this._baseFogNear = scene.fog.near
     this._baseFogFar = scene.fog.far
@@ -89,8 +94,7 @@ export class DayNightCycle {
     this._weatherTimer -= dt
     if (this._weatherTimer > 0) return
     if (this.weather === 'clear') {
-      // ~35% chance to start raining each time the timer rolls over.
-      if (Math.random() < 0.35) this._setWeather('rain')
+      if (Math.random() < this.rainChance) this._setWeather('rain')
       this._weatherTimer = 60 + Math.random() * 90
     } else {
       this._setWeather('clear')
@@ -102,6 +106,13 @@ export class DayNightCycle {
     this.weather = weather
     this.rainPoints.visible = weather === 'rain'
     setRainSound(weather === 'rain')
+  }
+
+  // Overrides how rain-prone the weather rolls are going forward — Survival
+  // difficulty's main "cuaca" lever (see game/survival.js). Doesn't force
+  // an immediate change, just biases the next clear→rain roll.
+  setRainChance(chance) {
+    this.rainChance = chance
   }
 
   // Changes the day/night pacing going forward — does NOT reset the current

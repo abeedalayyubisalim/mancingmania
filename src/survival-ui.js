@@ -25,7 +25,8 @@ const LOSE_REASON_TEXT = {
   diserang: 'Kamu diterkam gerombolan ikan buas...',
 }
 
-// `result` = { outcome: 'win' | 'lose', reason?, day, totalDays, bestDay, isNewRecord }
+// `result` = { outcome: 'win' | 'lose', reason?, day, totalDays, bestDay,
+//   isNewRecord, difficulty?, difficultyLabel?, justWon? }
 export function showSurvivalEnd(result, { onClose }) {
   hideSleepTransition()
   const overlay = document.createElement('div')
@@ -41,12 +42,14 @@ export function showSurvivalEnd(result, { onClose }) {
     <div class="survival-end-modal">
       <div class="survival-end-icon">${won ? '🏆' : '💀'}</div>
       <h3>${title}</h3>
+      ${result.difficultyLabel ? `<p class="survival-end-diff">Tingkat: ${result.difficultyLabel}</p>` : ''}
       <p class="survival-end-desc">${desc}</p>
       <div class="survival-end-stats">
         <div class="survival-end-stat"><span>📅 Hari Bertahan</span><b>${won ? result.totalDays : result.day} / ${result.totalDays}</b></div>
         <div class="survival-end-stat"><span>🥇 Rekor Terbaik</span><b>${result.bestDay}</b></div>
       </div>
       ${result.isNewRecord ? '<p class="survival-end-record">✨ Rekor baru!</p>' : ''}
+      ${result.justWon ? '<p class="survival-end-record">🏅 Lencana baru masuk ke profilmu!</p>' : ''}
       <button class="pause-btn primary survival-end-close">Kembali ke Menu</button>
     </div>
   `

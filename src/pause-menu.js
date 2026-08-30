@@ -40,6 +40,8 @@ import { DEFAULT_AVATAR, AVATAR_OPTIONS } from './avatar.js'
 import { renderResultRoster, renderPlayerCatchList } from './match-ui-shared.js'
 import { ACHIEVEMENTS, evaluate as evaluateAchievements } from './achievements.js'
 import { playUIClick, playPurchase, setSfxVolume, setMusicVolume, setMusicMuted } from './audio.js'
+import { DIFFICULTIES } from './game/survival.js'
+import { loadSurvivalRecord, DIFFICULTY_IDS } from './survival-storage.js'
 
 const CAT_LINES = [
   'Meong! Mau beli apa hari ini?',
@@ -145,6 +147,11 @@ export class PauseMenu {
             <span class="mtw-body"><b>Survival</b><span class="mtw-desc">Terdampar 10 hari — mancing, minum, tidur di gua sebelum kehabisan tenaga.</span></span>
           </button>
           <button class="pause-btn back-btn" data-back="mode-select">← Kembali</button>
+        </div>
+        <div id="pause-view-survival-select" class="pause-view hidden">
+          <h3>🏝️ Pilih Tingkat Kesulitan</h3>
+          <div id="survival-difficulty-list"></div>
+          <button class="pause-btn back-btn" data-back="singleplayer-select">← Kembali</button>
         </div>
         <div id="pause-view-mp-lobby" class="pause-view hidden">
           <h3>🌐 Multiplayer</h3>
@@ -286,6 +293,7 @@ export class PauseMenu {
       friends: this.el.querySelector('#pause-view-friends'),
       'mode-select': this.el.querySelector('#pause-view-mode-select'),
       'singleplayer-select': this.el.querySelector('#pause-view-singleplayer-select'),
+      'survival-select': this.el.querySelector('#pause-view-survival-select'),
       'mp-lobby': this.el.querySelector('#pause-view-mp-lobby'),
       'mp-room': this.el.querySelector('#pause-view-mp-room'),
       'coming-soon': this.el.querySelector('#pause-view-coming-soon'),
@@ -327,7 +335,7 @@ export class PauseMenu {
     )
     if (this.multiplayer) this.multiplayer.onRoomChange = () => this._renderMpRoom()
     this.el.querySelector('#sp-normal').addEventListener('click', () => this.onResume?.())
-    this.el.querySelector('#sp-survival').addEventListener('click', () => this.onStartSurvival?.())
+    this.el.querySelector('#sp-survival').addEventListener('click', () => this._showSurvivalDifficultyPicker())
     this.el.querySelector('#coming-soon-back').addEventListener('click', () => this._showView(this._comingSoonBackView))
     this.el.querySelector('#pause-leaderboard').addEventListener('click', () => this._showLeaderboard('alltime'))
     this.el.querySelector('#pause-settings').addEventListener('click', () => this._showView('settings'))
@@ -436,6 +444,35 @@ export class PauseMenu {
         </div>
       `
     }).join('')
+  }
+
+  // Difficulty picker shown before a Survival run starts — see
+  // game/survival.js's DIFFICULTIES for what each level actually changes
+  // (weather harshness + monster-wave ferocity). Shows this device's best
+  // day and win badge per difficulty (survival-storage.js), same "your
+  // record so far" framing as the end-of-run screen.
+  _showSurvivalDifficultyPicker() {
+    this._showView('survival-select')
+    const record = loadSurvivalRecord()
+    const list = this.el.querySelector('#survival-difficulty-list')
+    list.innerHTML = DIFFICULTY_IDS.map((id) => {
+      const cfg = DIFFICULTIES[id]
+      const won = record.wins[id]
+      const bestDay = record.bestDay[id]
+      return `
+        <button class="menu-tile-wide survival-diff-btn" data-difficulty="${id}">
+          <span class="mtw-icon">${cfg.emoji}</span>
+          <span class="mtw-body">
+            <b>${escapeHtml(cfg.label)} ${won ? '🏅' : ''}</b>
+            <span class="mtw-desc">${escapeHtml(cfg.desc)}</span>
+            ${bestDay > 0 ? `<span class="mtw-desc survival-diff-record">Rekor: Hari ${bestDay}/10${won ? ' · Selesai ✅' : ''}</span>` : ''}
+          </span>
+        </button>
+      `
+    }).join('')
+    list.querySelectorAll('.survival-diff-btn').forEach((btn) => {
+      btn.addEventListener('click', () => this.onStartSurvival?.(btn.dataset.difficulty))
+    })
   }
 
   _showView(name) {
@@ -1093,11 +1130,33 @@ export class PauseMenu {
       </div>
     `
 
+    // Survival badges — local-only (see survival-storage.js), so only shown
+    // on the owner's own profile, not when viewing someone else's (there's
+    // no way to know another device's record).
+    const survivalBadgesHtml = isSelf
+      ? DIFFICULTY_IDS.map((id) => {
+          const cfg = DIFFICULTIES[id]
+          const won = loadSurvivalRecord().wins[id]
+          return `
+            <div class="profile-badge ${won ? 'earned' : 'locked'}" title="${escapeHtml(cfg.label)}${won ? ' — selesai!' : ' — belum selesai'}">
+              <span class="profile-badge-icon">${won ? cfg.emoji : '🔒'}</span>
+              <span class="profile-badge-label">${escapeHtml(cfg.label)}</span>
+            </div>
+          `
+        }).join('')
+      : ''
+
     body.innerHTML = `
       <h4>Koleksi Ikan</h4>
       <div class="profile-mini-grid">${speciesGrid}</div>
       <h4>Inventaris</h4>
       <div class="profile-mini-grid">${gearHtml}</div>
+      ${
+        isSelf
+          ? `<h4>🏝️ Lencana Survival</h4>
+             <div class="profile-badge-row">${survivalBadgesHtml}</div>`
+          : ''
+      }
       <h4>Riwayat Pertandingan</h4>
       <div class="match-history-list">${matchesHtml}</div>
     `

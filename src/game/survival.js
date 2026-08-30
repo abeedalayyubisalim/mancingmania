@@ -1,4 +1,4 @@
-import { loadSurvivalRecord, saveSurvivalRecord } from '../survival-storage.js'
+import { recordSurvivalResult } from '../survival-storage.js'
 
 // Sub-tahap Survival-A: the core "stranded on an island for 10 days" loop —
 // Hunger/Thirst/Stamina drained by time and weather, fed back up by fishing
@@ -22,10 +22,58 @@ const START_AMMO = 6
 const MAX_AMMO = 10
 const AMMO_REGEN_SECONDS = 5 // stray rocks turn up as you wander around
 
-// From this night onward, monster-fish waves start showing up (see
-// game/monsters.js) — the first night is left alone so a brand new player
-// gets to learn the Hunger/Thirst/Stamina/cave loop before combat piles on.
-export const FIRST_WAVE_NIGHT = 2
+const DEFAULT_RAIN_CHANCE = 0.35 // game/daynight.js's own out-of-the-box default
+
+// Difficulty levels — the two "cuaca" (weather) and "keganasan monster"
+// (monster ferocity) levers the player asked for, plus a Hunger/Thirst/
+// Stamina drain multiplier so Mudah/Sulit feel meaningfully different even
+// before a single monster wave or rain cloud shows up:
+//  - drainMult: scales all three base drain rates in tick() below.
+//  - rainChance: passed straight to DayNightCycle.setRainChance.
+//  - firstWaveNight: which night monster-fish waves start (see
+//    game/monsters.js) — Sulit throws you in on night 1, Mudah gives two
+//    full days to learn the ropes first.
+//  - waveBase/wavePerDay/waveCap: feed waveSizeForDay() below.
+//  - damageMult: scales monster contact damage in takeDamage().
+export const DIFFICULTIES = {
+  easy: {
+    label: 'Mudah',
+    emoji: '😌',
+    desc: 'Cuaca lebih bersahabat, ikan buas datang belakangan dan lebih sedikit.',
+    drainMult: 0.8,
+    rainChance: 0.2,
+    firstWaveNight: 3,
+    waveBase: 2,
+    wavePerDay: 0.35,
+    waveCap: 5,
+    damageMult: 0.75,
+  },
+  normal: {
+    label: 'Normal',
+    emoji: '⚖️',
+    desc: 'Pengalaman survival standar — seimbang antara santai dan menantang.',
+    drainMult: 1,
+    rainChance: DEFAULT_RAIN_CHANCE,
+    firstWaveNight: 2,
+    waveBase: 2,
+    wavePerDay: 0.5,
+    waveCap: 7,
+    damageMult: 1,
+  },
+  hard: {
+    label: 'Sulit',
+    emoji: '🔥',
+    desc: 'Hujan lebih sering, ikan buas datang sejak malam pertama dan lebih ganas.',
+    drainMult: 1.25,
+    rainChance: 0.55,
+    firstWaveNight: 1,
+    waveBase: 3,
+    wavePerDay: 0.7,
+    waveCap: 9,
+    damageMult: 1.4,
+  },
+}
+export const DEFAULT_DIFFICULTY = 'normal'
 
 const BASE_HUNGER_DRAIN = 0.55 // per second
 const BASE_THIRST_DRAIN = 0.65
@@ -53,6 +101,8 @@ export class SurvivalSession {
     this.active = false
     this.ended = false
     this.day = 1
+    this.difficulty = DEFAULT_DIFFICULTY
+    this.cfg = DIFFICULTIES[DEFAULT_DIFFICULTY]
     this.hunger = START_HUNGER
     this.thirst = START_THIRST
     this.stamina = START_STAMINA
@@ -76,6 +126,9 @@ export class SurvivalSession {
     return {
       day: this.day,
       totalDays: TOTAL_DAYS,
+      difficulty: this.difficulty,
+      difficultyLabel: this.cfg.label,
+      difficultyEmoji: this.cfg.emoji,
       hunger: this.hunger,
       thirst: this.thirst,
       stamina: this.stamina,
@@ -86,10 +139,26 @@ export class SurvivalSession {
     }
   }
 
-  start() {
+  // How many monster fish spawn per wave on a given day, at the currently
+  // selected difficulty (see DIFFICULTIES above) — called from main.js's
+  // startWave() instead of hardcoding the formula there.
+  waveSizeForDay(day) {
+    return Math.min(Math.round(this.cfg.waveBase + this.cfg.wavePerDay * day), this.cfg.waveCap)
+  }
+
+  // Which night monster-fish waves start showing up, at the current
+  // difficulty — main.js's onNightStart hook compares against this instead
+  // of a fixed constant.
+  get firstWaveNight() {
+    return this.cfg.firstWaveNight
+  }
+
+  start(difficulty = DEFAULT_DIFFICULTY) {
     this.active = true
     this.ended = false
     this.day = 1
+    this.difficulty = DIFFICULTIES[difficulty] ? difficulty : DEFAULT_DIFFICULTY
+    this.cfg = DIFFICULTIES[this.difficulty]
     this.hunger = START_HUNGER
     this.thirst = START_THIRST
     this.stamina = START_STAMINA
@@ -100,6 +169,7 @@ export class SurvivalSession {
     this._drinkCooldown = 0
     this._ammoRegenTimer = 0
     this.dayNight.setCycleSeconds(CYCLE_SECONDS)
+    this.dayNight.setRainChance(this.cfg.rainChance)
     this.onStatChange?.(this.snapshot())
   }
 
@@ -114,28 +184,34 @@ export class SurvivalSession {
     this.active = false
     this.ended = true
     this.dayNight.setCycleSeconds(NORMAL_CYCLE_SECONDS)
+    this.dayNight.setRainChance(DEFAULT_RAIN_CHANCE)
     this.onEnd?.()
-  }
-
-  _recordIfBest(dayReached) {
-    const record = loadSurvivalRecord()
-    if (dayReached > (record.bestDay ?? 0)) {
-      saveSurvivalRecord({ bestDay: dayReached })
-      return true
-    }
-    return false
   }
 
   _lose(reason) {
     this._finish()
-    const isNewRecord = this._recordIfBest(this.day)
-    this.onGameOver?.({ reason, day: this.day, isNewRecord, bestDay: loadSurvivalRecord().bestDay })
+    const { isNewRecord, record } = recordSurvivalResult(this.difficulty, this.day, false)
+    this.onGameOver?.({
+      reason,
+      day: this.day,
+      isNewRecord,
+      bestDay: record.bestDay[this.difficulty],
+      difficulty: this.difficulty,
+      difficultyLabel: this.cfg.label,
+    })
   }
 
   _win() {
     this._finish()
-    const isNewRecord = this._recordIfBest(TOTAL_DAYS)
-    this.onWin?.({ day: TOTAL_DAYS, isNewRecord, bestDay: loadSurvivalRecord().bestDay })
+    const { isNewRecord, justWon, record } = recordSurvivalResult(this.difficulty, TOTAL_DAYS, true)
+    this.onWin?.({
+      day: TOTAL_DAYS,
+      isNewRecord,
+      justWon,
+      bestDay: record.bestDay[this.difficulty],
+      difficulty: this.difficulty,
+      difficultyLabel: this.cfg.label,
+    })
   }
 
   // Only works at night — fast-forwards to the next dawn (see
@@ -165,7 +241,7 @@ export class SurvivalSession {
   // instead of waiting for the next tick() pass, so it reads as responsive.
   takeDamage(amount) {
     if (!this.active) return
-    this.hp = Math.max(0, this.hp - amount)
+    this.hp = Math.max(0, this.hp - amount * this.cfg.damageMult)
     this.onStatChange?.(this.snapshot())
     if (this.hp <= 0) this._lose('diserang')
   }
@@ -205,9 +281,10 @@ export class SurvivalSession {
     const isNight = this.dayNight.isNight()
     const isRaining = this.dayNight.isRaining()
 
-    const hungerMult = isNight ? (isRaining ? NIGHT_RAIN_HUNGER_MULT : NIGHT_HUNGER_MULT) : 1
-    const thirstMult = !isNight ? DAY_THIRST_MULT : 1
-    const staminaDrain = BASE_STAMINA_DRAIN + (isNight && !this._sleptTonight ? AWAKE_AT_NIGHT_EXTRA_STAMINA_DRAIN : 0)
+    const hungerMult = (isNight ? (isRaining ? NIGHT_RAIN_HUNGER_MULT : NIGHT_HUNGER_MULT) : 1) * this.cfg.drainMult
+    const thirstMult = (!isNight ? DAY_THIRST_MULT : 1) * this.cfg.drainMult
+    const staminaDrain =
+      (BASE_STAMINA_DRAIN + (isNight && !this._sleptTonight ? AWAKE_AT_NIGHT_EXTRA_STAMINA_DRAIN : 0)) * this.cfg.drainMult
 
     this.hunger = Math.max(0, this.hunger - BASE_HUNGER_DRAIN * hungerMult * dt)
     this.thirst = Math.max(0, this.thirst - BASE_THIRST_DRAIN * thirstMult * dt)

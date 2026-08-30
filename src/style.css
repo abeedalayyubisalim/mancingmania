@@ -853,6 +853,10 @@ html, body {
   line-height: 1.3;
 }
 
+.survival-diff-record {
+  color: #ffe6a8;
+}
+
 /* "Coming soon" placeholder (Survival, Multiplayer for now) */
 .coming-soon-body {
   padding: 20px 6px;
@@ -2054,6 +2058,51 @@ html, body {
   background: rgba(124, 252, 154, 0.15);
 }
 
+.profile-badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.profile-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 70px;
+  padding: 8px 4px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: center;
+}
+
+.profile-badge-icon {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.profile-badge-label {
+  font-size: 10px;
+  color: #b7cdd8;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.profile-badge.earned {
+  background: rgba(255, 214, 102, 0.15);
+  border-color: rgba(255, 214, 102, 0.5);
+}
+
+.profile-badge.earned .profile-badge-label {
+  color: #ffe6a8;
+}
+
+.profile-badge.locked {
+  opacity: 0.55;
+}
+
 .item-detail-equipped {
   text-align: center;
   font-size: 12px;
@@ -2776,6 +2825,14 @@ html, body {
 .survival-end-modal h3 {
   margin: 8px 0 4px;
   font-size: 20px;
+}
+
+.survival-end-diff {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #b7cdd8;
+  letter-spacing: 0.3px;
 }
 
 .survival-end-desc {

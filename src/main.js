@@ -18,9 +18,10 @@ import { Water } from './game/water.js'
 import { Player, DEFAULT_ROD_COLOR } from './game/player.js'
 import { Fishing } from './game/fishing.js'
 import { DayNightCycle } from './game/daynight.js'
-import { SurvivalSession, foodValueFor, TOTAL_DAYS as SURVIVAL_TOTAL_DAYS, FIRST_WAVE_NIGHT } from './game/survival.js'
+import { SurvivalSession, foodValueFor, TOTAL_DAYS as SURVIVAL_TOTAL_DAYS } from './game/survival.js'
 import { showSleepTransition, hideSleepTransition, showSurvivalEnd } from './survival-ui.js'
 import { MonsterField } from './game/monsters.js'
+import { loadSurvivalRecord } from './survival-storage.js'
 import {
   fetchProfile,
   syncPoints,
@@ -259,6 +260,9 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
       level: getLevelInfo(totalPoints).level,
       gearTiers: Object.fromEntries(GEAR_LINES.map((l) => [l.id, getGearTier(l.id)])),
       cosmeticsCount: getOwned().length,
+      // Local-only (see survival-storage.js) — same device this Survival run
+      // was played on, matching how the bestDay record already works.
+      survivalWins: loadSurvivalRecord().wins,
     }
   }
 
@@ -339,7 +343,7 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
   })
 
   function startWave(day) {
-    const count = Math.min(2 + Math.floor(day / 2), 7)
+    const count = survival.waveSizeForDay(day)
     waveTotal = count
     waveActive = true
     monsters.spawnWave(count)
@@ -652,7 +656,7 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
     onInviteFriend: (friendId, code) =>
       sendChat({ fromId: identityId, fromName: username, toId: friendId, text: `Ayo gabung room ${code}!`, invite: { code } }),
     survival,
-    onStartSurvival: () => startSurvival(),
+    onStartSurvival: (difficulty) => startSurvival(difficulty),
     onLeaveSurvival: () => {
       hud.hideSurvivalHud()
       hud.hideWaveBanner()
@@ -682,9 +686,9 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
     if (document.pointerLockElement === renderer.domElement) document.exitPointerLock()
   }
 
-  // ---- Survival event wiring (Sub-tahap Survival-A) ----------------------
-  function startSurvival() {
-    survival.start()
+  // ---- Survival event wiring (Sub-tahap Survival-A, +difficulty levels) --
+  function startSurvival(difficulty) {
+    survival.start(difficulty)
     endWave()
     player.setMode('island', SURVIVAL_SPAWN_POSITION)
     hud.showSurvivalHud()
@@ -694,14 +698,14 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
     lastSurvivalSpot = null
     lastThirstNudge = 0
     hud.showSurvivalToast(
-      '🏝️ Terdampar! Mancing cuma bisa di pantai, sungai, atau danau. Minum di sungai/danau. Malam hari, tidur di gua (dekat gunung) biar aman. Waspada gelombang ikan buas mulai malam ke-2!',
+      `🏝️ Terdampar (${survival.cfg.label})! Mancing cuma bisa di pantai, sungai, atau danau. Minum di sungai/danau. Malam hari, tidur di gua (dekat gunung) biar aman. Waspada gelombang ikan buas mulai malam ke-${survival.firstWaveNight}!`,
       7500
     )
   }
 
   survival.onStatChange = (snapshot) => hud.updateSurvivalStats(snapshot)
   survival.onNightStart = (day) => {
-    if (day >= FIRST_WAVE_NIGHT) startWave(day)
+    if (day >= survival.firstWaveNight) startWave(day)
   }
   survival.onDayChange = (day, missedSleep) => {
     endWave()
@@ -711,19 +715,23 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
     endWave()
     touchControls?.setThrowVisible(false)
   }
-  survival.onGameOver = ({ reason, day, isNewRecord, bestDay }) => {
+  survival.onGameOver = ({ reason, day, isNewRecord, bestDay, difficulty, difficultyLabel }) => {
     hud.hideSurvivalHud()
     openPause()
     showSurvivalEnd(
-      { outcome: 'lose', reason, day, totalDays: SURVIVAL_TOTAL_DAYS, bestDay, isNewRecord },
+      { outcome: 'lose', reason, day, totalDays: SURVIVAL_TOTAL_DAYS, bestDay, isNewRecord, difficulty, difficultyLabel },
       { onClose: () => player.setMode('dock', PIER_RETURN_POSITION) }
     )
   }
-  survival.onWin = ({ day, isNewRecord, bestDay }) => {
+  survival.onWin = ({ day, isNewRecord, bestDay, difficulty, difficultyLabel, justWon }) => {
     hud.hideSurvivalHud()
     openPause()
+    // A fresh win at this difficulty unlocks/claims its Survival badge
+    // achievement (see achievements.js's survival_easy/normal/hard) right
+    // away, same trigger point as a catch or store purchase.
+    if (justWon) checkAchievements()
     showSurvivalEnd(
-      { outcome: 'win', day, totalDays: SURVIVAL_TOTAL_DAYS, bestDay, isNewRecord },
+      { outcome: 'win', day, totalDays: SURVIVAL_TOTAL_DAYS, bestDay, isNewRecord, difficulty, difficultyLabel, justWon },
       { onClose: () => player.setMode('dock', PIER_RETURN_POSITION) }
     )
   }
