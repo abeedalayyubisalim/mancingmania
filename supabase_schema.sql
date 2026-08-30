@@ -16,6 +16,10 @@ create table if not exists public.leaderboard (
 -- store. Safe to run even if the column already exists.
 alter table public.leaderboard add column if not exists wallet numeric not null default 0;
 
+-- Already have the table? Run this line too — it adds the player's chosen
+-- profile picture (an emoji). Safe to run even if it already exists.
+alter table public.leaderboard add column if not exists avatar text;
+
 -- One-time fix if you already had players with points > 0 BEFORE the
 -- `wallet` column existed: the column defaults new/existing rows to 0,
 -- which left their wallet empty even though they'd already earned points.

@@ -23,6 +23,7 @@ import {
   summarizeGearRows,
 } from './store.js'
 import { getLevelInfo } from './leveling.js'
+import { DEFAULT_AVATAR, AVATAR_OPTIONS } from './avatar.js'
 
 const CAT_LINES = [
   'Meong! Mau beli apa hari ini?',
@@ -36,10 +37,23 @@ const CAT_LINES = [
 export class PauseMenu {
   constructor(
     root,
-    { username, userId, onResume, onSensitivityChange, getScore, spendScore, getTotalPoints, onStoreChange }
+    {
+      username,
+      userId,
+      avatar,
+      onResume,
+      onSensitivityChange,
+      getScore,
+      spendScore,
+      getTotalPoints,
+      onStoreChange,
+      onAvatarChange,
+    }
   ) {
     this.onResume = onResume
     this.username = username
+    this.avatar = avatar || DEFAULT_AVATAR
+    this.onAvatarChange = onAvatarChange
     this.getScore = getScore ?? (() => 0)
     this.spendScore = spendScore ?? (() => false)
     this.getTotalPoints = getTotalPoints ?? (() => 0)
@@ -48,6 +62,10 @@ export class PauseMenu {
     // devices); guests fall back to the local browser copy.
     this.userId = userId ?? null
     this.galleryData = null
+    // Which view the fish/item detail popup's back button returns to —
+    // it can be opened from the Koleksi Ikan gallery OR from a profile.
+    this._detailBackView = 'gallery'
+    this.profileGearItems = []
 
     this.el = document.createElement('div')
     this.el.id = 'pause-menu'
@@ -96,7 +114,11 @@ export class PauseMenu {
         </div>
         <div id="pause-view-gallery-detail" class="pause-view hidden">
           <div id="gallery-detail-body"></div>
-          <button class="pause-btn back-btn" data-back="gallery">← Kembali ke Koleksi</button>
+          <button id="gallery-detail-back" class="pause-btn back-btn">← Kembali</button>
+        </div>
+        <div id="pause-view-item-detail" class="pause-view hidden">
+          <div id="item-detail-body"></div>
+          <button class="pause-btn back-btn" data-back="profile">← Kembali ke Profil</button>
         </div>
         <div id="pause-view-profile" class="pause-view hidden">
           <div id="profile-search">
@@ -106,6 +128,11 @@ export class PauseMenu {
           <div id="profile-search-results"></div>
           <div id="profile-body"></div>
           <button class="pause-btn back-btn" data-back="main">← Kembali</button>
+        </div>
+        <div id="pause-view-avatar-picker" class="pause-view hidden">
+          <h3>Pilih Foto Profil</h3>
+          <div id="avatar-picker-grid"></div>
+          <button class="pause-btn back-btn" data-back="profile">← Kembali</button>
         </div>
       </div>
     `
@@ -117,8 +144,10 @@ export class PauseMenu {
       settings: this.el.querySelector('#pause-view-settings'),
       gallery: this.el.querySelector('#pause-view-gallery'),
       'gallery-detail': this.el.querySelector('#pause-view-gallery-detail'),
+      'item-detail': this.el.querySelector('#pause-view-item-detail'),
       store: this.el.querySelector('#pause-view-store'),
       profile: this.el.querySelector('#pause-view-profile'),
+      'avatar-picker': this.el.querySelector('#pause-view-avatar-picker'),
     }
 
     this.el.querySelector('#pause-resume').addEventListener('click', () => this.onResume?.())
@@ -131,6 +160,11 @@ export class PauseMenu {
     this.el.querySelectorAll('[data-back]').forEach((btn) =>
       btn.addEventListener('click', () => this._showView(btn.dataset.back))
     )
+    // The fish/item detail popup can be opened from the gallery or from a
+    // profile, so its back button returns wherever it was opened from.
+    this.el
+      .querySelector('#gallery-detail-back')
+      .addEventListener('click', () => this._showView(this._detailBackView))
 
     this.el.querySelector('#profile-search-btn').addEventListener('click', () => this._searchPlayers())
     this.el.querySelector('#profile-search-input').addEventListener('keydown', (e) => {
@@ -197,7 +231,10 @@ export class PauseMenu {
     }).join('')
 
     grid.querySelectorAll('.gallery-card:not(.locked)').forEach((card) => {
-      card.addEventListener('click', () => this._showFishDetail(card.dataset.fish))
+      card.addEventListener('click', () => {
+        this._detailBackView = 'gallery'
+        this._showFishDetail(card.dataset.fish)
+      })
     })
   }
 
@@ -341,13 +378,14 @@ export class PauseMenu {
     const body = this.el.querySelector('#profile-body')
     body.innerHTML = '<p class="gallery-status">Memuat profil...</p>'
 
-    let username, totalPoints, wallet, targetUserId
+    let username, totalPoints, wallet, targetUserId, avatarForDisplay
 
     if (isSelf) {
       username = this.username
       totalPoints = this.getTotalPoints()
       wallet = this.getScore()
       targetUserId = this.userId
+      avatarForDisplay = this.avatar
     } else {
       const profile = targetId
         ? await fetchPublicProfileById(targetId)
@@ -360,12 +398,16 @@ export class PauseMenu {
       totalPoints = profile.points ?? 0
       wallet = null
       targetUserId = profile.id
+      avatarForDisplay = profile.avatar || DEFAULT_AVATAR
     }
 
     const inventoryRows = targetUserId ? await fetchInventory(targetUserId) : null
     const fishIds = new Set(FISH_TYPES.map((f) => f.id))
     const fishRows = inventoryRows ? inventoryRows.filter((r) => fishIds.has(r.jenis)) : null
     const grouped = fishRows ? groupInventoryRows(fishRows) : null
+    // Reuse the same cache _showFishDetail reads from, so clicking a fish
+    // in the profile grid opens the right owner's catch data.
+    this.galleryData = grouped
     const caughtCount = grouped ? Object.keys(grouped).length : isSelf ? totalCaughtSpecies() : 0
     const totalSpecies = FISH_TYPES.length
     const info = getLevelInfo(totalPoints)
@@ -375,7 +417,9 @@ export class PauseMenu {
       return Boolean(entry)
     })
     const speciesGrid = caughtFish.length
-      ? caughtFish.map((f) => `<div class="profile-mini-item" title="${escapeHtml(f.name)}">${fishIconSVG(f, 30)}</div>`).join('')
+      ? caughtFish
+          .map((f) => `<button class="profile-mini-item" data-fish="${f.id}" title="${escapeHtml(f.name)}">${fishIconSVG(f, 30)}</button>`)
+          .join('')
       : '<p class="gallery-status">Belum ada koleksi ikan.</p>'
 
     // Gear/cosmetics: for the logged-in owner, use the live local cache
@@ -394,25 +438,45 @@ export class PauseMenu {
       gearTiers = {}
     }
 
-    const gearItems = [
+    this.profileGearItems = [
       ...GEAR_LINES.filter((l) => (gearTiers[l.id] ?? 0) > 0).map((l) => {
         const tier = gearTiers[l.id]
-        return { emoji: l.emoji, name: l.tiers[tier - 1]?.name ?? l.name }
+        const tierData = l.tiers[tier - 1]
+        return {
+          key: `gear:${l.id}`,
+          kind: 'gear',
+          emoji: l.emoji,
+          name: tierData?.name ?? l.name,
+          desc: tierData?.desc ?? '',
+          tierLabel: `Tingkat ${tier} dari ${l.tiers.length}`,
+          price: tierData?.price,
+        }
       }),
       ...cosmeticIds
         .map((id) => COSMETIC_ITEMS.find((i) => i.id === id))
         .filter(Boolean)
-        .map((i) => ({ emoji: i.emoji, name: i.name })),
+        .map((i) => ({
+          key: `cosmetic:${i.id}`,
+          kind: 'cosmetic',
+          emoji: i.emoji,
+          name: i.name,
+          desc: i.desc,
+          tierLabel: null,
+          price: i.price,
+        })),
     ]
-    const gearHtml = gearItems.length
-      ? gearItems
-          .map((i) => `<div class="profile-mini-item" title="${escapeHtml(i.name)}">${i.emoji}</div>`)
+    const gearHtml = this.profileGearItems.length
+      ? this.profileGearItems
+          .map((i) => `<button class="profile-mini-item" data-gearkey="${i.key}" title="${escapeHtml(i.name)}">${i.emoji}</button>`)
           .join('')
       : '<p class="gallery-status">Belum ada item toko.</p>'
 
     body.innerHTML = `
       <div class="profile-header">
-        <div class="profile-avatar">🎣</div>
+        <div class="profile-avatar-wrap">
+          <div class="profile-avatar">${escapeHtml(avatarForDisplay)}</div>
+          ${isSelf ? '<button id="profile-avatar-edit" class="avatar-edit-btn" title="Ganti foto profil">✏️</button>' : ''}
+        </div>
         <div>
           <h3>${escapeHtml(username)}</h3>
           <div class="profile-level">⭐ Level ${info.level}</div>
@@ -430,6 +494,52 @@ export class PauseMenu {
       <h4>Inventaris</h4>
       <div class="profile-mini-grid">${gearHtml}</div>
     `
+
+    body.querySelectorAll('.profile-mini-item[data-fish]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        this._detailBackView = 'profile'
+        this._showFishDetail(btn.dataset.fish)
+      })
+    })
+    body.querySelectorAll('.profile-mini-item[data-gearkey]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const item = this.profileGearItems.find((g) => g.key === btn.dataset.gearkey)
+        if (item) this._showItemDetail(item)
+      })
+    })
+    const editBtn = body.querySelector('#profile-avatar-edit')
+    if (editBtn) editBtn.addEventListener('click', () => this._showAvatarPicker())
+  }
+
+  _showItemDetail(item) {
+    this._showView('item-detail')
+    this.el.querySelector('#item-detail-body').innerHTML = `
+      <div class="detail-icon"><span class="detail-emoji">${item.emoji}</span></div>
+      <h3>${escapeHtml(item.name)}</h3>
+      ${item.tierLabel ? `<p class="detail-latin">${escapeHtml(item.tierLabel)}</p>` : ''}
+      <div class="detail-rows">
+        <div class="detail-row"><span>📋 Deskripsi</span><p>${escapeHtml(item.desc || '—')}</p></div>
+      </div>
+      <div class="detail-footer">
+        <span>${item.kind === 'gear' ? '🛠️ Perlengkapan' : '✨ Kosmetik'}</span>
+        ${item.price != null ? `<span>🪙 ${item.price} poin</span>` : ''}
+      </div>
+    `
+  }
+
+  _showAvatarPicker() {
+    this._showView('avatar-picker')
+    const grid = this.el.querySelector('#avatar-picker-grid')
+    grid.innerHTML = AVATAR_OPTIONS.map(
+      (a) => `<button class="avatar-option ${a === this.avatar ? 'selected' : ''}" data-avatar="${a}">${a}</button>`
+    ).join('')
+    grid.querySelectorAll('.avatar-option').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        this.avatar = btn.dataset.avatar
+        this.onAvatarChange?.(this.avatar)
+        this._showProfile()
+      })
+    })
   }
 
   async _searchPlayers() {

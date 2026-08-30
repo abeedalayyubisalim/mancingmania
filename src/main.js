@@ -6,7 +6,7 @@ import { buildEnvironment } from './game/scene.js'
 import { Water } from './game/water.js'
 import { Player } from './game/player.js'
 import { Fishing } from './game/fishing.js'
-import { fetchProfile, syncPoints, fetchLeaderboard, fetchInventory, addInventoryItem } from './supabase-client.js'
+import { fetchProfile, syncPoints, updateAvatar, fetchLeaderboard, fetchInventory, addInventoryItem } from './supabase-client.js'
 import { PauseMenu } from './pause-menu.js'
 import { TouchControls } from './touch-controls.js'
 import { isTouchDevice } from './settings.js'
@@ -14,17 +14,20 @@ import { recordCatch } from './collection.js'
 import { getCosmeticBadge, applySyncedInventory } from './store.js'
 import { getLevelInfo } from './leveling.js'
 import { loadLocalWallet, saveLocalWallet } from './wallet-storage.js'
+import { DEFAULT_AVATAR, loadLocalAvatar, saveLocalAvatar } from './avatar.js'
 
 const app = document.querySelector('#app')
 
 async function main() {
   const { session, username, guest } = await showAuthGate(app)
 
-  // Load the player's existing lifetime points + wallet so they don't
-  // reset to 0 every time you log back in — logged-in players get this
-  // from Supabase, guests get it from this browser's local storage.
+  // Load the player's existing lifetime points + wallet + avatar so
+  // nothing resets to 0/default every time you log back in — logged-in
+  // players get this from Supabase, guests get it from this browser's
+  // local storage.
   let totalPoints = 0
   let wallet = 0
+  let avatar = DEFAULT_AVATAR
   if (session?.user) {
     const [profile, inventoryRows] = await Promise.all([
       fetchProfile(session.user.id),
@@ -32,6 +35,7 @@ async function main() {
     ])
     totalPoints = profile.points
     wallet = profile.wallet
+    avatar = profile.avatar || DEFAULT_AVATAR
     // Bring any gear/cosmetics bought on another device into this
     // browser's local cache too, so bonuses apply immediately.
     applySyncedInventory(inventoryRows)
@@ -39,12 +43,13 @@ async function main() {
     const local = loadLocalWallet()
     totalPoints = local.points
     wallet = local.wallet
+    avatar = loadLocalAvatar()
   }
 
-  startGame({ session, username, guest, totalPoints, wallet })
+  startGame({ session, username, guest, totalPoints, wallet, avatar })
 }
 
-function startGame({ session, username, guest, totalPoints, wallet }) {
+function startGame({ session, username, guest, totalPoints, wallet, avatar }) {
   const touch = isTouchDevice()
 
   app.innerHTML = `
@@ -123,6 +128,7 @@ function startGame({ session, username, guest, totalPoints, wallet }) {
   const pauseMenu = new PauseMenu(menuRoot, {
     username,
     userId: session?.user?.id ?? null,
+    avatar,
     getScore: () => wallet,
     getTotalPoints: () => totalPoints,
     spendScore: (amount) => {
@@ -136,6 +142,11 @@ function startGame({ session, username, guest, totalPoints, wallet }) {
       player.controls.pointerSpeed = v
     },
     onStoreChange: () => hud.setBadge(getCosmeticBadge()),
+    onAvatarChange: (newAvatar) => {
+      avatar = newAvatar
+      if (session?.user) updateAvatar(session.user.id, newAvatar).catch(() => {})
+      else saveLocalAvatar(newAvatar)
+    },
     onResume: () => {
       if (touch) {
         paused = false
