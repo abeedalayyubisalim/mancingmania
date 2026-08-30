@@ -496,6 +496,14 @@ html, body {
   cursor: default;
 }
 
+.gallery-status {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: #9fc7db;
+  font-size: 13px;
+  padding: 20px 0;
+}
+
 .gallery-card-icon {
   height: 44px;
   display: flex;

@@ -6,7 +6,7 @@ import { buildEnvironment } from './game/scene.js'
 import { Water } from './game/water.js'
 import { Player } from './game/player.js'
 import { Fishing } from './game/fishing.js'
-import { submitScore, fetchLeaderboard } from './supabase-client.js'
+import { submitScore, fetchLeaderboard, addInventoryItem } from './supabase-client.js'
 import { PauseMenu } from './pause-menu.js'
 import { TouchControls } from './touch-controls.js'
 import { isTouchDevice } from './settings.js'
@@ -66,6 +66,9 @@ function startGame({ session, username, guest }) {
     onStatus: (text, opts) => hud.setStatus(text, opts),
     onCatch: (fish) => {
       recordCatch(fish.id)
+      if (session?.user) {
+        addInventoryItem(session.user.id, fish.id).catch(() => {})
+      }
       if (!fish.junk) {
         score += fish.points
         hud.setScore(score)
@@ -81,6 +84,7 @@ function startGame({ session, username, guest }) {
   const menuRoot = document.querySelector('#menu-root')
   const pauseMenu = new PauseMenu(menuRoot, {
     username,
+    userId: session?.user?.id ?? null,
     onSensitivityChange: (v) => {
       player.controls.pointerSpeed = v
     },

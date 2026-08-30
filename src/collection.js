@@ -44,3 +44,20 @@ export function getEntry(fishId) {
 export function totalCaughtSpecies() {
   return Object.keys(state).length
 }
+
+// Turns raw Supabase inventory rows ({jenis, created_at}, oldest first)
+// into the same { [jenis]: { count, firstCaughtAt } } shape as local
+// storage uses, so the gallery UI doesn't need to care which source it
+// came from.
+export function groupInventoryRows(rows) {
+  const grouped = {}
+  for (const row of rows) {
+    const entry = grouped[row.jenis]
+    const t = new Date(row.created_at).getTime()
+    grouped[row.jenis] = {
+      count: (entry?.count ?? 0) + 1,
+      firstCaughtAt: entry?.firstCaughtAt ?? t,
+    }
+  }
+  return grouped
+}

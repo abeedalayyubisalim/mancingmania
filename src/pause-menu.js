@@ -1,13 +1,17 @@
 import { settings, saveSettings, isTouchDevice } from './settings.js'
-import { signOut, fetchLeaderboard } from './supabase-client.js'
+import { signOut, fetchLeaderboard, fetchInventory } from './supabase-client.js'
 import { FISH_TYPES } from './game/fish-data.js'
 import { fishIconSVG } from './fish-icon.js'
-import { isCaught, getEntry, totalCaughtSpecies } from './collection.js'
+import { getEntry, totalCaughtSpecies, groupInventoryRows } from './collection.js'
 
 export class PauseMenu {
-  constructor(root, { username, onResume, onSensitivityChange }) {
+  constructor(root, { username, userId, onResume, onSensitivityChange }) {
     this.onResume = onResume
     this.username = username
+    // Signed-in players get their collection from Supabase (synced across
+    // devices); guests fall back to the local browser copy.
+    this.userId = userId ?? null
+    this.galleryData = null
 
     this.el = document.createElement('div')
     this.el.id = 'pause-menu'
@@ -99,15 +103,22 @@ export class PauseMenu {
         .join('') || '<li>Belum ada skor.</li>'
   }
 
-  _showGallery() {
+  async _showGallery() {
     this._showView('gallery')
-    const total = FISH_TYPES.length
-    this.el.querySelector('#gallery-progress').textContent = `(${totalCaughtSpecies()}/${total})`
-
     const grid = this.el.querySelector('#gallery-grid')
+    grid.innerHTML = '<p class="gallery-status">Memuat koleksi...</p>'
+
+    // Signed-in: pull the authoritative list from Supabase (synced across
+    // devices). Guest: use whatever's cached in this browser.
+    this.galleryData = this.userId ? groupInventoryRows(await fetchInventory(this.userId)) : null
+
+    const total = FISH_TYPES.length
+    const caughtCount = this.galleryData ? Object.keys(this.galleryData).length : totalCaughtSpecies()
+    this.el.querySelector('#gallery-progress').textContent = `(${caughtCount}/${total})`
+
     grid.innerHTML = FISH_TYPES.map((fish) => {
-      const caught = isCaught(fish.id)
-      const entry = getEntry(fish.id)
+      const entry = this.galleryData ? this.galleryData[fish.id] : getEntry(fish.id)
+      const caught = Boolean(entry)
       return `
         <button class="gallery-card ${caught ? '' : 'locked'}" data-fish="${fish.id}" ${caught ? '' : 'disabled'}>
           <div class="gallery-card-icon">${caught ? fishIconSVG(fish, 44) : '❔'}</div>
@@ -124,7 +135,7 @@ export class PauseMenu {
 
   _showFishDetail(fishId) {
     const fish = FISH_TYPES.find((f) => f.id === fishId)
-    const entry = getEntry(fishId)
+    const entry = this.galleryData ? this.galleryData[fishId] : getEntry(fishId)
     if (!fish || !entry) return
     this._showView('gallery-detail')
 

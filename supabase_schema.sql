@@ -27,3 +27,28 @@ create policy "Players can insert their own score"
 create policy "Players can update their own score"
   on public.leaderboard for update
   using (auth.uid()::text = id);
+
+-- ---------------------------------------------------------------------------
+-- `inventory` — one row per item a player has acquired (fish caught, and
+-- later other item types like hooks/bait). `id` is the player's auth uuid
+-- (stored as text, not unique — a player has many rows), `jenis` is the
+-- item id (e.g. a fish id like "tuna"), `created_at` timestamps it.
+-- ---------------------------------------------------------------------------
+
+create table if not exists public.inventory (
+  id text not null,
+  jenis text not null,
+  created_at timestamptz not null default now()
+);
+
+alter table public.inventory enable row level security;
+
+-- A player can only see their own inventory (unlike the public leaderboard).
+create policy "Players can view their own inventory"
+  on public.inventory for select
+  using (auth.uid()::text = id);
+
+-- A player can only add items to their own inventory.
+create policy "Players can add to their own inventory"
+  on public.inventory for insert
+  with check (auth.uid()::text = id);

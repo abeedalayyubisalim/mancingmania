@@ -104,3 +104,26 @@ export async function fetchLeaderboard(limit = 10) {
   // know about this table's actual column names.
   return data.map((row) => ({ username: row.name, score: row.points }))
 }
+
+// ---------------------------------------------------------------------------
+// Inventory (fish caught, and later other item types like hooks/bait).
+// One row per item acquired — `jenis` is the item id (e.g. a fish id like
+// "tuna", or a future non-fish item like "hook_bronze").
+// ---------------------------------------------------------------------------
+
+export async function addInventoryItem(userId, jenis) {
+  if (!supabase || !userId) return
+  await supabase.from('inventory').insert({ id: userId, jenis })
+}
+
+// Returns every inventory row for this user, oldest first.
+export async function fetchInventory(userId) {
+  if (!supabase || !userId) return []
+  const { data, error } = await supabase
+    .from('inventory')
+    .select('jenis, created_at')
+    .eq('id', userId)
+    .order('created_at', { ascending: true })
+  if (error) return []
+  return data
+}
