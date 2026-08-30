@@ -1,3 +1,5 @@
+import { isTouchDevice } from './settings.js'
+
 export class Hud {
   constructor(root) {
     this.root = root
@@ -23,7 +25,11 @@ export class Hud {
         <button id="leaderboard-close">Tutup</button>
       </div>
       <div id="controls-hint">
-        WASD gerak &nbsp;•&nbsp; Mouse lihat sekitar &nbsp;•&nbsp; Klik tahan-lepas untuk memancing &nbsp;•&nbsp; Esc keluar kunci mouse
+        ${
+          isTouchDevice()
+            ? 'Joystick jalan &nbsp;•&nbsp; Geser layar lihat sekitar &nbsp;•&nbsp; 🎣 mancing &nbsp;•&nbsp; ☰ menu'
+            : 'WASD gerak &nbsp;•&nbsp; Mouse lihat sekitar &nbsp;•&nbsp; Klik tahan-lepas memancing &nbsp;•&nbsp; Esc buka menu'
+        }
       </div>
     `
 
