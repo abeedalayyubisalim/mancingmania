@@ -304,7 +304,10 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
       else disembark()
     })
     window.addEventListener('keydown', (e) => {
-      if (e.code !== 'KeyQ' || paused) return
+      if (e.code !== 'KeyQ') return
+      // Unlike E (board/disembark), Q works even while paused — chat is
+      // meant to be reachable from the pause menu too, not just mid-game
+      // (see the raised #chat-toggle/#chat-panel z-index in style.css).
       // Don't hijack Q while the player is actually typing a message that
       // happens to contain the letter Q.
       if (document.activeElement === hud.chatInput) return

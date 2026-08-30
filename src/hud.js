@@ -24,6 +24,7 @@ export class Hud {
       </div>
       <div id="levelup-toast" class="hidden"></div>
       <div id="achievement-toast" class="hidden"></div>
+      <div id="invite-toast" class="hidden"></div>
       <div id="interact-prompt" class="hidden"></div>
       <div id="status-box">
         <div id="status-text">Klik untuk mulai memancing</div>
@@ -99,6 +100,13 @@ export class Hud {
     this.timeWeatherEl = root.querySelector('#time-weather-box')
     this.interactPrompt = root.querySelector('#interact-prompt')
     this.mpBanner = root.querySelector('#mp-banner')
+    this.inviteToast = root.querySelector('#invite-toast')
+    this.inviteToast.addEventListener('click', () => {
+      if (!this._pendingInviteCode) return
+      playUIClick()
+      this.onJoinRoomInvite?.(this._pendingInviteCode)
+      this._hideInviteToast()
+    })
 
     // ---- Chat --------------------------------------------------------
     this.chatPanel = root.querySelector('#chat-panel')
@@ -290,6 +298,24 @@ export class Hud {
     this.mpBanner.classList.add('hidden')
   }
 
+  // A proactive, top-right, tap-to-join notification for a multiplayer room
+  // invite — separate from the invite also landing in the chat thread (see
+  // receiveChatMessage below), since the recipient might not have chat
+  // open at all when a friend invites them.
+  showInviteToast({ fromName, code }) {
+    this._pendingInviteCode = code
+    this.inviteToast.innerHTML = `<span class="invite-toast-icon">🎮</span><div><b>${escapeHtml(fromName || 'Teman')}</b> mengundang main bareng!<br>Room ${escapeHtml(code)} · ketuk buat gabung</div>`
+    this.inviteToast.classList.remove('hidden')
+    clearTimeout(this._inviteToastTimer)
+    this._inviteToastTimer = setTimeout(() => this._hideInviteToast(), 12000)
+  }
+
+  _hideInviteToast() {
+    this.inviteToast.classList.add('hidden')
+    this._pendingInviteCode = null
+    clearTimeout(this._inviteToastTimer)
+  }
+
   // ---- Chat ----------------------------------------------------------
   // `identity` = { id, username, avatar } for the local player — needed to
   // tell "sent by me" apart from incoming messages, and as the `fromId`
@@ -347,6 +373,10 @@ export class Hud {
         this._renderMessageList(this._chatLog.dm[otherId])
       }
     }
+    // Someone invited us to a room — surface it as a toast right away
+    // regardless of whether the chat panel is even open (it also stays
+    // sitting in the DM thread above for anyone who checks chat later).
+    if (payload.invite && !mine) this.showInviteToast({ fromName: payload.fromName, code: payload.invite.code })
   }
 
   _appendMessage(msg) {
