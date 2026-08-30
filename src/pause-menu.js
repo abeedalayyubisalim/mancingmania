@@ -91,7 +91,7 @@ export class PauseMenu {
               ? 'Joystick kiri buat jalan, geser layar kanan buat lihat sekitar, tombol 🎣 buat mancing.'
               : 'WASD buat jalan, mouse buat lihat sekitar, klik tahan-lepas buat mancing.'
           }</p>
-          <button id="pause-resume" class="pause-btn primary">▶ Main</button>
+          <button id="pause-play" class="pause-btn primary">▶ Main</button>
           <div class="menu-grid">
             <button id="pause-profile" class="menu-tile"><span class="menu-tile-icon">👤</span><span class="menu-tile-label">Profil</span></button>
             <button id="pause-gallery" class="menu-tile"><span class="menu-tile-icon">🐟</span><span class="menu-tile-label">Koleksi</span></button>
@@ -102,6 +102,38 @@ export class PauseMenu {
             <button id="pause-settings" class="menu-tile"><span class="menu-tile-icon">⚙️</span><span class="menu-tile-label">Pengaturan</span></button>
           </div>
           <button id="pause-logout" class="pause-btn danger">🚪 Keluar</button>
+        </div>
+        <div id="pause-view-mode-select" class="pause-view hidden">
+          <h3>Pilih Mode</h3>
+          <button id="mode-singleplayer" class="menu-tile-wide">
+            <span class="mtw-icon">🎣</span>
+            <span class="mtw-body"><b>Single Player</b><span class="mtw-desc">Main sendiri, santai di dermaga.</span></span>
+          </button>
+          <button id="mode-multiplayer" class="menu-tile-wide">
+            <span class="mtw-icon">🌐</span>
+            <span class="mtw-body"><b>Multiplayer</b><span class="mtw-desc">Main bareng teman, lihat karakter mereka langsung.</span></span>
+          </button>
+          <button class="pause-btn back-btn" data-back="main">← Kembali</button>
+        </div>
+        <div id="pause-view-singleplayer-select" class="pause-view hidden">
+          <h3>Single Player</h3>
+          <button id="sp-normal" class="menu-tile-wide">
+            <span class="mtw-icon">🎣</span>
+            <span class="mtw-body"><b>Normal</b><span class="mtw-desc">Mancing santai seperti biasa.</span></span>
+          </button>
+          <button id="sp-survival" class="menu-tile-wide">
+            <span class="mtw-icon">🏝️</span>
+            <span class="mtw-body"><b>Survival</b><span class="mtw-desc">Mode bertahan hidup — segera hadir.</span></span>
+          </button>
+          <button class="pause-btn back-btn" data-back="mode-select">← Kembali</button>
+        </div>
+        <div id="pause-view-coming-soon" class="pause-view hidden">
+          <h3 id="coming-soon-title"></h3>
+          <div class="coming-soon-body">
+            <div class="coming-soon-icon">🚧</div>
+            <p id="coming-soon-desc"></p>
+          </div>
+          <button id="coming-soon-back" class="pause-btn back-btn">← Kembali</button>
         </div>
         <div id="pause-view-leaderboard" class="pause-view hidden">
           <h3>Papan Skor <span id="leaderboard-online-badge"></span></h3>
@@ -185,9 +217,25 @@ export class PauseMenu {
       profile: this.el.querySelector('#pause-view-profile'),
       'avatar-picker': this.el.querySelector('#pause-view-avatar-picker'),
       friends: this.el.querySelector('#pause-view-friends'),
+      'mode-select': this.el.querySelector('#pause-view-mode-select'),
+      'singleplayer-select': this.el.querySelector('#pause-view-singleplayer-select'),
+      'coming-soon': this.el.querySelector('#pause-view-coming-soon'),
     }
 
-    this.el.querySelector('#pause-resume').addEventListener('click', () => this.onResume?.())
+    this.el.querySelector('#pause-play').addEventListener('click', () => this._showView('mode-select'))
+    this.el.querySelector('#mode-singleplayer').addEventListener('click', () => this._showView('singleplayer-select'))
+    this.el.querySelector('#mode-multiplayer').addEventListener('click', () =>
+      this._showComingSoon(
+        '🌐 Multiplayer',
+        'Main bareng teman — bikin room, undang lewat chat, dan battle nangkap ikan bareng — lagi disiapkan. Sabar ya!',
+        'mode-select'
+      )
+    )
+    this.el.querySelector('#sp-normal').addEventListener('click', () => this.onResume?.())
+    this.el.querySelector('#sp-survival').addEventListener('click', () =>
+      this._showComingSoon('🏝️ Survival', 'Mode bertahan hidup lagi disusun. Sabar ya!', 'singleplayer-select')
+    )
+    this.el.querySelector('#coming-soon-back').addEventListener('click', () => this._showView(this._comingSoonBackView))
     this.el.querySelector('#pause-leaderboard').addEventListener('click', () => this._showLeaderboard('alltime'))
     this.el.querySelector('#pause-settings').addEventListener('click', () => this._showView('settings'))
     this.el.querySelector('#pause-gallery').addEventListener('click', () => this._showGallery())
@@ -288,6 +336,16 @@ export class PauseMenu {
 
   _showView(name) {
     Object.entries(this.views).forEach(([key, el]) => el.classList.toggle('hidden', key !== name))
+  }
+
+  // A generic "not built yet" placeholder (Survival, Multiplayer for now)
+  // — `backView` is wherever its back button should return to, since it's
+  // reached from more than one place in the menu.
+  _showComingSoon(title, desc, backView) {
+    this._comingSoonBackView = backView
+    this.el.querySelector('#coming-soon-title').textContent = title
+    this.el.querySelector('#coming-soon-desc').textContent = desc
+    this._showView('coming-soon')
   }
 
   async _showLeaderboard(mode = 'alltime') {
