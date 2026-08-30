@@ -10,7 +10,7 @@ import {
   DEFAULT_BOAT_COLOR,
 } from './game/scene.js'
 import { Water } from './game/water.js'
-import { Player } from './game/player.js'
+import { Player, DEFAULT_ROD_COLOR } from './game/player.js'
 import { Fishing } from './game/fishing.js'
 import { DayNightCycle } from './game/daynight.js'
 import { fetchProfile, syncPoints, updateAvatar, fetchInventory, addInventoryItem, fetchFriends } from './supabase-client.js'
@@ -41,7 +41,7 @@ import {
 } from './daily-reward.js'
 import { hasSeenTutorial, showTutorial } from './tutorial.js'
 import { unlockAudio, playAchievement, playDailyReward } from './audio.js'
-import { connectLobby, sendChat } from './social.js'
+import { connectLobby, sendChat, updatePresenceCosmetics } from './social.js'
 
 const app = document.querySelector('#app')
 
@@ -98,11 +98,47 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
   // just means they show up as "online" without matching any specific
   // profile row anywhere else. (Papan Skor itself lives in the pause menu
   // now — see pause-menu.js — not as a HUD quick-access button.)
+  // Rod skin / hat / vest to announce alongside presence — this is the
+  // only way another player (or the Profile preview, see pause-menu.js)
+  // can know what you actually have equipped right now, since that choice
+  // is a per-device preference with nothing to look up for it in Supabase.
+  function currentCosmeticsForPresence() {
+    const owned = getOwned()
+    return {
+      rodColor: getSkinColor('rod', DEFAULT_ROD_COLOR),
+      hat: owned.includes('hat_nelayan'),
+      vest: owned.includes('vest_pro'),
+    }
+  }
+
   const identityId = session?.user?.id ?? crypto.randomUUID()
   hud.setIdentity({ id: identityId, username, avatar, loggedIn: Boolean(session?.user) })
   hud.getFriends = () => (session?.user ? fetchFriends(session.user.id) : Promise.resolve([]))
   hud.onSendChat = ({ toId, text }) => sendChat({ fromId: identityId, fromName: username, toId, text })
-  connectLobby({ id: identityId, username, avatar }, { onChat: (payload) => hud.receiveChatMessage(payload) })
+  connectLobby(
+    { id: identityId, username, avatar, cosmetics: currentCosmeticsForPresence() },
+    { onChat: (payload) => hud.receiveChatMessage(payload) }
+  )
+  // On desktop the mouse is pointer-locked (captured/hidden) while playing,
+  // so clicking the 💬 button does nothing — there's no real cursor to
+  // click with. Opening chat has to release the lock first; closing it
+  // re-acquires the lock so movement/look pick back up right away. Also
+  // freeze WASD movement while chat is open so typing a message doesn't
+  // walk the character around.
+  hud.onChatOpen = () => {
+    if (touch) return
+    if (document.pointerLockElement === renderer.domElement) {
+      suppressChatUnlock = true
+      document.exitPointerLock()
+    }
+    player.setInputLocked(true)
+    hud.chatInput?.focus()
+  }
+  hud.onChatClose = () => {
+    if (touch) return
+    player.setInputLocked(false)
+    if (!paused) player.controls.lock()
+  }
 
   // Persists points/wallet to Supabase (logged in) or this browser (guest)
   // whenever either one changes — catch, store purchase, achievement, or
@@ -252,6 +288,18 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
       if (player.mode === 'dock') boardBoat()
       else disembark()
     })
+    window.addEventListener('keydown', (e) => {
+      if (e.code !== 'KeyQ' || paused) return
+      // Don't hijack Q while the player is actually typing a message that
+      // happens to contain the letter Q.
+      if (document.activeElement === hud.chatInput) return
+      // Otherwise this keydown is about to focus the chat input as part of
+      // opening it (see hud.onChatOpen) — without preventDefault the
+      // browser still delivers this same keystroke to that now-focused
+      // input, leaving a stray "q" typed into it.
+      e.preventDefault()
+      hud.toggleChat()
+    })
   }
 
   function getFishingZone() {
@@ -301,6 +349,12 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
 
   // ---- Pause menu (Escape on desktop, ☰ button always) ----------------
   let paused = true
+  // Opening chat on desktop deliberately releases pointer lock (see
+  // hud.onChatOpen below) so the mouse cursor comes back for clicking
+  // around the panel. That triggers the same 'unlock' event Escape does —
+  // this flag tells the listener "this one's from chat, not a real
+  // pause," so it doesn't also pop the pause menu open on top of it.
+  let suppressChatUnlock = false
   const menuRoot = document.querySelector('#menu-root')
   const pauseMenu = new PauseMenu(menuRoot, {
     username,
@@ -321,6 +375,7 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
     onStoreChange: () => {
       hud.setBadge(getCosmeticBadge())
       applyEquippedSkins()
+      updatePresenceCosmetics(currentCosmeticsForPresence())
       checkAchievements()
     },
     onAvatarChange: (newAvatar) => {
@@ -354,6 +409,10 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
       pauseMenu.close()
     })
     player.controls.addEventListener('unlock', () => {
+      if (suppressChatUnlock) {
+        suppressChatUnlock = false
+        return
+      }
       if (!paused) openPause()
     })
   }

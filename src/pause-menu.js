@@ -14,7 +14,7 @@ import {
   removeFriend,
 } from './supabase-client.js'
 import { FISH_TYPES, pointsForWeight } from './game/fish-data.js'
-import { isOnline, onlineCount } from './social.js'
+import { isOnline, onlineCount, getOnlinePlayers } from './social.js'
 import { fishIconSVG } from './fish-icon.js'
 import { getEntry, totalCaughtSpecies, groupInventoryRows } from './collection.js'
 import {
@@ -29,8 +29,12 @@ import {
   summarizeGearRows,
   getEquippedSkin,
   equipSkin,
+  getSkinColor,
 } from './store.js'
 import { getLevelInfo } from './leveling.js'
+import * as THREE from 'three'
+import { buildCharacterAvatar } from './game/character.js'
+import { DEFAULT_ROD_COLOR } from './game/player.js'
 import { DEFAULT_AVATAR, AVATAR_OPTIONS } from './avatar.js'
 import { ACHIEVEMENTS, evaluate as evaluateAchievements } from './achievements.js'
 import { playUIClick, playPurchase, setSfxVolume, setMusicVolume, setMusicMuted } from './audio.js'
@@ -193,6 +197,7 @@ export class PauseMenu {
             <button id="profile-search-btn">🔍</button>
           </div>
           <div id="profile-search-results"></div>
+          <div id="profile-avatar-preview"><canvas id="profile-avatar-canvas"></canvas></div>
           <div id="profile-body"></div>
           <button class="pause-btn back-btn" data-back="main">← Kembali</button>
         </div>
@@ -612,6 +617,53 @@ export class PauseMenu {
     this._renderStore()
   }
 
+  // Lazily builds the small rotating character preview on the Profile
+  // screen — one renderer/scene reused across every _showProfile() call
+  // (avoids piling up WebGL contexts) with the model's cosmetics swapped
+  // out each time via _updateAvatarPreview().
+  _ensureAvatarPreview() {
+    if (this._avatarPreview) return this._avatarPreview
+    const canvas = this.el.querySelector('#profile-avatar-canvas')
+    const width = 120
+    const height = 150
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true })
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    renderer.setSize(width, height, false)
+
+    const scene = new THREE.Scene()
+    const camera = new THREE.PerspectiveCamera(32, width / height, 0.1, 10)
+    camera.position.set(0, 1.3, 3.4)
+    camera.lookAt(0, 1.05, 0)
+
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x3a4a55, 1.15))
+    const dir = new THREE.DirectionalLight(0xffffff, 0.7)
+    dir.position.set(2, 3, 2)
+    scene.add(dir)
+
+    const { group, setRodColor, setCosmetics } = buildCharacterAvatar({})
+    scene.add(group)
+
+    this._avatarPreview = { renderer, scene, camera, group, setRodColor, setCosmetics, angle: 0 }
+
+    const loop = () => {
+      requestAnimationFrame(loop)
+      // Skip rendering (but keep the rAF alive) whenever the profile view
+      // isn't the one showing — no point spending frames on a hidden canvas.
+      if (this.views.profile.classList.contains('hidden')) return
+      this._avatarPreview.angle += 0.008
+      group.rotation.y = this._avatarPreview.angle
+      renderer.render(scene, camera)
+    }
+    loop()
+    return this._avatarPreview
+  }
+
+  _updateAvatarPreview({ hat, vest, rodColor }) {
+    const preview = this._ensureAvatarPreview()
+    preview.setCosmetics({ hat, vest })
+    preview.setRodColor(rodColor)
+  }
+
   // targetId/targetName omitted => shows the current player's own profile.
   async _showProfile(targetId = null, targetName = null) {
     this._showView('profile')
@@ -719,6 +771,21 @@ export class PauseMenu {
       : '<p class="gallery-status">Belum ada item toko.</p>'
 
     const isFriend = !isSelf && this.userId && targetUserId ? (await this._ensureFriendIds()).has(targetUserId) : false
+
+    // Rotating 3D preview of this player's character — the same model
+    // multiplayer will show representing them in the world (see
+    // game/character.js). Accessories (hat/vest) are always accurate,
+    // straight from their inventory. The rod's *color* is a per-device
+    // "equipped skin" choice with nothing to look up for it in Supabase —
+    // if they're online right now we get the real answer from presence
+    // (see social.js), otherwise we fall back to the default rather than
+    // guess which of their owned skins they're actually wearing.
+    const hasHat = cosmeticIds.includes('hat_nelayan')
+    const hasVest = cosmeticIds.includes('vest_pro')
+    const rodColor = isSelf
+      ? getSkinColor('rod', DEFAULT_ROD_COLOR)
+      : (getOnlinePlayers().find((p) => p.id === targetUserId)?.rodColor ?? DEFAULT_ROD_COLOR)
+    this._updateAvatarPreview({ hat: hasHat, vest: hasVest, rodColor })
 
     body.innerHTML = `
       <div class="profile-header">

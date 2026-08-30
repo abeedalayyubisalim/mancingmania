@@ -121,13 +121,11 @@ export class Hud {
     })
     root.querySelector('#chat-toggle').addEventListener('click', () => {
       playUIClick()
-      const willShow = this.chatPanel.classList.contains('hidden')
-      this.chatPanel.classList.toggle('hidden', !willShow)
-      if (willShow) this._renderChatTab()
+      this.toggleChat()
     })
     root.querySelector('#chat-close').addEventListener('click', () => {
       playUIClick()
-      this.chatPanel.classList.add('hidden')
+      this.toggleChat(false)
     })
     root.querySelectorAll('.chat-tab').forEach((tab) => {
       tab.addEventListener('click', () => {
@@ -277,6 +275,23 @@ export class Hud {
   // main.js's onSendChat wiring stamps outgoing messages with.
   setIdentity(identity) {
     this._identity = identity
+  }
+
+  // Toggles the chat panel — used by both the 💬 button (touch/click) and
+  // the Q keyboard shortcut wired in main.js (desktop can't reliably click
+  // this button at all while the mouse is pointer-locked for gameplay, so
+  // main.js also releases/re-acquires the lock around this). `onChatOpen`/
+  // `onChatClose` let main.js hook that pointer-lock dance in without hud.js
+  // needing to know anything about Three.js or PointerLockControls.
+  toggleChat(forceOpen) {
+    const show = forceOpen ?? this.chatPanel.classList.contains('hidden')
+    this.chatPanel.classList.toggle('hidden', !show)
+    if (show) {
+      this._renderChatTab()
+      this.onChatOpen?.()
+    } else {
+      this.onChatClose?.()
+    }
   }
 
   _sendChatText(text) {

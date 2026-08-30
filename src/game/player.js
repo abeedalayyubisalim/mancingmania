@@ -27,6 +27,9 @@ export class Player {
     // Analog stick input (touch joystick), each in [-1, 1].
     this.analog = { x: 0, y: 0 }
     this.velocity = new THREE.Vector3()
+    // Set while a text input (chat, etc.) has focus, so typing "wasd" in a
+    // message doesn't also walk the character around the dock.
+    this.inputLocked = false
 
     this._onKeyDown = (e) => this.setKey(e.code, true)
     this._onKeyUp = (e) => this.setKey(e.code, false)
@@ -36,7 +39,13 @@ export class Player {
     this._buildViewmodel()
   }
 
+  setInputLocked(locked) {
+    this.inputLocked = locked
+    if (locked) this.move = { forward: false, back: false, left: false, right: false }
+  }
+
   setKey(code, down) {
+    if (this.inputLocked) return
     switch (code) {
       case 'KeyW':
       case 'ArrowUp':

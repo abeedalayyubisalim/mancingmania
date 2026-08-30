@@ -1216,6 +1216,21 @@ html, body {
   overflow-y: auto;
 }
 
+/* Rotating character preview — same model multiplayer shows for other
+   players, wearing whatever this profile's owner actually has equipped. */
+#profile-avatar-preview {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+#profile-avatar-canvas {
+  width: 120px;
+  height: 150px;
+  border-radius: 10px;
+  background: radial-gradient(ellipse at center, rgba(55, 163, 224, 0.18), transparent 70%);
+}
+
 .profile-header {
   display: flex;
   align-items: center;
