@@ -350,6 +350,78 @@ html, body {
   pointer-events: auto;
 }
 
+/* ---------- Share catch panel ---------- */
+.share-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.65);
+  z-index: 100;
+  pointer-events: auto;
+}
+
+.share-card-modal {
+  position: relative;
+  width: 320px;
+  max-width: 90vw;
+  max-height: 88vh;
+  overflow-y: auto;
+  background: rgba(10, 25, 35, 0.95);
+  border: 1px solid rgba(255, 212, 121, 0.35);
+  border-radius: 16px;
+  padding: 18px 18px 20px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+}
+
+.share-close-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.share-card-img {
+  width: 100%;
+  border-radius: 10px;
+  margin-top: 6px;
+  display: block;
+}
+
+.share-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.share-action-btn {
+  display: block;
+  padding: 11px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.share-action-btn.primary {
+  background: linear-gradient(135deg, #37a3e0, #1c6fa5);
+  border-color: transparent;
+}
+
 #user-badge {
   color: #ffd479;
   font-size: 11px;

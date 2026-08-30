@@ -102,34 +102,69 @@ function buildCanvas(fish, username) {
   return canvas
 }
 
-export async function shareCatch(fish, username) {
+// Turns a data: URL into a File object synchronously (no fetch/promise),
+// so it's ready before the share panel is even shown — that keeps the
+// eventual navigator.share() call directly inside a click handler, with
+// no intervening await, which browsers require to allow it at all.
+function dataUrlToFile(dataUrl, filename) {
+  const [header, b64] = dataUrl.split(',')
+  const mime = header.match(/:(.*?);/)[1]
+  const binary = atob(b64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return new File([bytes], filename, { type: mime })
+}
+
+// Opens a share panel for this catch. Must be called directly from a click
+// handler (no awaited work before it) so the browser still considers the
+// click "fresh" enough to allow navigator.share() when the player taps it.
+export function openShareCard(fish, username) {
   const canvas = buildCanvas(fish, username || 'Pemancing')
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
-  if (!blob) return
+  const dataUrl = canvas.toDataURL('image/png')
+  const filename = `tangkapan-${fish.id}.png`
+  const file = dataUrlToFile(dataUrl, filename)
 
   const text = fish.junk
     ? `Dapat "${fish.name}" pas mancing di Fishing FPS 😅`
     : `Baru nangkap ${fish.name} (${fish.weight.toFixed(2)} kg, +${fish.points} poin) di Fishing FPS! 🎣`
+  const waUrl = `https://wa.me/?text=${encodeURIComponent(text)}`
 
-  const file = new File([blob], `tangkapan-${fish.id}.png`, { type: 'image/png' })
+  const canNativeShare = typeof navigator.share === 'function'
 
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try {
-      await navigator.share({ files: [file], text, title: 'Fishing FPS' })
-      return
-    } catch {
-      // Cancelled or failed — fall through to the download+link fallback.
-    }
+  const overlay = document.createElement('div')
+  overlay.className = 'share-overlay'
+  overlay.innerHTML = `
+    <div class="share-card-modal">
+      <button class="share-close-btn" aria-label="Tutup">✕</button>
+      <img class="share-card-img" src="${dataUrl}" alt="${escapeHtml(fish.name)}">
+      <div class="share-card-actions">
+        <a class="share-action-btn primary" href="${dataUrl}" download="${filename}">📥 Unduh Gambar</a>
+        <a class="share-action-btn" href="${waUrl}" target="_blank" rel="noopener noreferrer">💬 WhatsApp</a>
+        ${canNativeShare ? '<button type="button" class="share-action-btn" id="native-share-btn">📤 Bagikan Lainnya...</button>' : ''}
+      </div>
+    </div>
+  `
+
+  function close() {
+    overlay.remove()
+  }
+  overlay.querySelector('.share-close-btn').addEventListener('click', close)
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) close()
+  })
+
+  if (canNativeShare) {
+    const nativeBtn = overlay.querySelector('#native-share-btn')
+    nativeBtn.addEventListener('click', () => {
+      // Directly inside the click handler, no preceding await — keeps the
+      // user-activation the browser requires for navigator.share().
+      navigator.share({ files: [file], text, title: 'Fishing FPS' }).catch(() => {})
+    })
   }
 
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `tangkapan-${fish.id}.png`
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 2000)
+  document.body.appendChild(overlay)
+}
 
-  window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank')
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 }

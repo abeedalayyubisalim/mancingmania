@@ -117,6 +117,17 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar }) {
         if (newLevel > prevLevel) hud.showLevelUp(newLevel)
         persistPoints()
       }
+      // The share button on the catch popup is unusable while the mouse
+      // is pointer-locked (cursor hidden/captured, and the global
+      // mousedown listener in fishing.js would treat the click as a new
+      // cast). Release the lock so the popup is actually clickable; the
+      // `unlock` handler below is told to not treat this as "player
+      // opened the pause menu" via suppressUnlockPause. The player can
+      // re-lock (and resume) just by clicking the canvas again.
+      if (!touch && document.pointerLockElement === renderer.domElement) {
+        suppressUnlockPause = true
+        document.exitPointerLock()
+      }
       hud.showCatch(fish)
     },
     onMiss: () => {},
@@ -124,6 +135,7 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar }) {
 
   // ---- Pause menu (Escape on desktop, ☰ button always) ----------------
   let paused = true
+  let suppressUnlockPause = false
   const menuRoot = document.querySelector('#menu-root')
   const pauseMenu = new PauseMenu(menuRoot, {
     username,
@@ -170,6 +182,10 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar }) {
       pauseMenu.close()
     })
     player.controls.addEventListener('unlock', () => {
+      if (suppressUnlockPause) {
+        suppressUnlockPause = false
+        return
+      }
       if (!paused) openPause()
     })
   }

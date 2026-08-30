@@ -1,5 +1,5 @@
 import { isTouchDevice } from './settings.js'
-import { shareCatch } from './share-card.js'
+import { openShareCard } from './share-card.js'
 
 export class Hud {
   constructor(root) {
@@ -69,7 +69,7 @@ export class Hud {
     root.querySelector('#leaderboard-toggle').addEventListener('click', () => this.toggleLeaderboard())
     root.querySelector('#leaderboard-close').addEventListener('click', () => this.toggleLeaderboard(false))
     this.shareBtn.addEventListener('click', () => {
-      if (this._lastCatch) shareCatch(this._lastCatch, this.username)
+      if (this._lastCatch) openShareCard(this._lastCatch, this.username)
     })
   }
 
