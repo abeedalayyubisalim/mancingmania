@@ -7,6 +7,9 @@ import { Water } from './game/water.js'
 import { Player } from './game/player.js'
 import { Fishing } from './game/fishing.js'
 import { submitScore, fetchLeaderboard } from './supabase-client.js'
+import { PauseMenu } from './pause-menu.js'
+import { TouchControls } from './touch-controls.js'
+import { isTouchDevice } from './settings.js'
 
 const app = document.querySelector('#app')
 
@@ -17,16 +20,13 @@ async function main() {
 
 function startGame({ session, username, guest }) {
   let score = 0
+  const touch = isTouchDevice()
+
   app.innerHTML = `
-    <div id="game-container">
+    <div id="game-container" class="${touch ? 'touch-mode' : ''}">
       <canvas id="game-canvas"></canvas>
       <div id="hud-root"></div>
-      <div id="blocker">
-        <div id="blocker-inner">
-          <h2>🎣 Klik untuk mulai</h2>
-          <p>WASD gerak, mouse untuk melihat sekitar.<br/>Klik &amp; tahan untuk mengisi lemparan, lepas untuk melempar kail.</p>
-        </div>
-      </div>
+      <div id="menu-root"></div>
     </div>
   `
 
@@ -56,11 +56,6 @@ function startGame({ session, username, guest }) {
   // (the viewmodel rod) to be rendered.
   scene.add(camera)
 
-  const blocker = document.querySelector('#blocker')
-  blocker.addEventListener('click', () => player.controls.lock())
-  player.controls.addEventListener('lock', () => blocker.classList.add('hidden'))
-  player.controls.addEventListener('unlock', () => blocker.classList.remove('hidden'))
-
   const fishing = new Fishing({
     scene,
     camera,
@@ -79,6 +74,69 @@ function startGame({ session, username, guest }) {
     onMiss: () => {},
   })
 
+  // ---- Pause menu (Escape on desktop, ☰ button always) ----------------
+  let paused = true
+  const menuRoot = document.querySelector('#menu-root')
+  const pauseMenu = new PauseMenu(menuRoot, {
+    username,
+    onSensitivityChange: (v) => {
+      player.controls.pointerSpeed = v
+    },
+    onResume: () => {
+      if (touch) {
+        paused = false
+        pauseMenu.close()
+      } else {
+        player.controls.lock()
+      }
+    },
+  })
+
+  function openPause() {
+    paused = true
+    fishing.releaseAction()
+    pauseMenu.open()
+    if (document.pointerLockElement === renderer.domElement) document.exitPointerLock()
+  }
+
+  if (!touch) {
+    player.controls.addEventListener('lock', () => {
+      paused = false
+      pauseMenu.close()
+    })
+    player.controls.addEventListener('unlock', () => {
+      if (!paused) openPause()
+    })
+  }
+  pauseMenu.open()
+
+  // ---- Touch controls (phones/tablets) ---------------------------------
+  let touchControls = null
+  if (touch) {
+    touchControls = new TouchControls(document.querySelector('#game-container'), {
+      onMove: (x, y) => {
+        if (!paused) player.setAnalogMove(x, y)
+      },
+      onLook: (dx, dy) => {
+        if (!paused) player.applyLookDelta(dx, dy)
+      },
+      onActionStart: () => {
+        if (!paused) fishing.pressAction()
+      },
+      onActionEnd: () => {
+        if (!paused) fishing.releaseAction()
+      },
+      onPause: () => {
+        if (paused) {
+          paused = false
+          pauseMenu.close()
+        } else {
+          openPause()
+        }
+      },
+    })
+  }
+
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight
     camera.updateProjectionMatrix()
@@ -91,9 +149,11 @@ function startGame({ session, username, guest }) {
     const dt = Math.min(clock.getDelta(), 0.1)
     const elapsed = clock.elapsedTime
 
-    water.update(elapsed)
-    player.update(dt)
-    fishing.update(dt, elapsed)
+    if (!paused) {
+      water.update(elapsed)
+      player.update(dt)
+      fishing.update(dt, elapsed)
+    }
 
     renderer.render(scene, camera)
   }
