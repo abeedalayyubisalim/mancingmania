@@ -46,6 +46,13 @@ export function totalCaughtSpecies() {
   return Object.keys(state).length
 }
 
+// The full local { [jenis]: { count, firstCaughtAt, maxWeight } } map —
+// used by achievements to compute unlock progress for guests, in the same
+// shape groupInventoryRows() produces for logged-in players.
+export function allEntries() {
+  return { ...state }
+}
+
 // Turns raw Supabase inventory rows ({jenis, created_at, berat}, oldest
 // first) into the same { [jenis]: { count, firstCaughtAt, maxWeight } }
 // shape as local storage uses, so the gallery UI doesn't need to care which

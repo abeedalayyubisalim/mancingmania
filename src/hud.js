@@ -1,5 +1,6 @@
 import { isTouchDevice } from './settings.js'
 import { openShareCard } from './share-card.js'
+import { playUIClick } from './audio.js'
 
 export class Hud {
   constructor(root) {
@@ -11,8 +12,10 @@ export class Hud {
         <div id="score-box">🪙 <span id="score-value">0</span></div>
         <div id="level-box">⭐ Lv.<span id="level-value">1</span></div>
         <div id="user-box"><span id="username-value"></span><span id="user-badge"></span></div>
+        <div id="sync-status" class="hidden"></div>
       </div>
       <div id="levelup-toast" class="hidden"></div>
+      <div id="achievement-toast" class="hidden"></div>
       <div id="status-box">
         <div id="status-text">Klik untuk mulai memancing</div>
         <div id="power-bar"><div id="power-fill"></div></div>
@@ -65,10 +68,19 @@ export class Hud {
     this.shareBtn = root.querySelector('#catch-share-btn')
     this.leaderboardPanel = root.querySelector('#leaderboard-panel')
     this.leaderboardList = root.querySelector('#leaderboard-list')
+    this.syncStatusEl = root.querySelector('#sync-status')
+    this.achievementToast = root.querySelector('#achievement-toast')
 
-    root.querySelector('#leaderboard-toggle').addEventListener('click', () => this.toggleLeaderboard())
-    root.querySelector('#leaderboard-close').addEventListener('click', () => this.toggleLeaderboard(false))
+    root.querySelector('#leaderboard-toggle').addEventListener('click', () => {
+      playUIClick()
+      this.toggleLeaderboard()
+    })
+    root.querySelector('#leaderboard-close').addEventListener('click', () => {
+      playUIClick()
+      this.toggleLeaderboard(false)
+    })
     this.shareBtn.addEventListener('click', () => {
+      playUIClick()
       if (this._lastCatch) openShareCard(this._lastCatch, this.username)
     })
   }
@@ -95,6 +107,29 @@ export class Hud {
     this.levelupToast.classList.remove('hidden')
     clearTimeout(this._levelupTimer)
     this._levelupTimer = setTimeout(() => this.levelupToast.classList.add('hidden'), 2600)
+  }
+
+  showAchievementToast(achievement) {
+    this.achievementToast.innerHTML = `<span class="achievement-toast-icon">${achievement.emoji}</span><div><b>Pencapaian Terbuka!</b><br>${escapeHtml(achievement.name)} · +${achievement.reward} 🪙</div>`
+    this.achievementToast.classList.remove('hidden')
+    clearTimeout(this._achievementTimer)
+    this._achievementTimer = setTimeout(() => this.achievementToast.classList.add('hidden'), 3600)
+  }
+
+  // state: 'saving' | 'saved' | 'error' | null (null hides it immediately)
+  setSyncStatus(state) {
+    clearTimeout(this._syncTimer)
+    if (!state) {
+      this.syncStatusEl.classList.add('hidden')
+      return
+    }
+    const labels = { saving: '💾 Menyimpan...', saved: '✓ Tersimpan', error: '⚠️ Gagal simpan' }
+    this.syncStatusEl.textContent = labels[state] ?? ''
+    this.syncStatusEl.className = state
+    this.syncStatusEl.classList.remove('hidden')
+    if (state !== 'saving') {
+      this._syncTimer = setTimeout(() => this.syncStatusEl.classList.add('hidden'), 1800)
+    }
   }
 
   setStatus(text, opts = {}) {

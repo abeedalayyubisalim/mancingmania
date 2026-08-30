@@ -320,6 +320,10 @@ html, body {
   border-radius: 12px;
   padding: 16px 26px;
   text-align: center;
+  /* Above the touch look-drag pad (z-index 1) and joystick/action buttons
+     (z-index 5), so the share button is actually reachable on touch
+     devices instead of being covered by the invisible look-around area. */
+  z-index: 20;
 }
 
 #catch-title {
@@ -1204,4 +1208,233 @@ html, body {
   .touch-mode #status-box {
     width: 78vw;
   }
+}
+
+/* ---------- Sync status indicator ---------- */
+#sync-status {
+  align-self: center;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  color: rgba(255, 255, 255, 0.75);
+  transition: opacity 0.3s ease;
+}
+
+#sync-status.hidden {
+  display: none;
+}
+
+#sync-status.error {
+  color: #ff9d9d;
+}
+
+#sync-status.saved {
+  color: #7cfc9a;
+}
+
+/* ---------- Achievement toast ---------- */
+#achievement-toast {
+  position: absolute;
+  top: 66px;
+  left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: linear-gradient(135deg, #37a3e0, #1c6fa5);
+  color: #fff;
+  font-size: 12px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  animation: levelup-pop 0.4s ease;
+  max-width: 260px;
+}
+
+#achievement-toast.hidden {
+  display: none;
+}
+
+.achievement-toast-icon {
+  font-size: 26px;
+  flex-shrink: 0;
+}
+
+/* ---------- Achievements view ---------- */
+#achievements-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 48vh;
+  overflow-y: auto;
+  margin-bottom: 12px;
+}
+
+.achievement-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.achievement-card.locked {
+  opacity: 0.5;
+}
+
+.achievement-card.claimed {
+  border-color: rgba(124, 252, 154, 0.4);
+}
+
+.achievement-card-icon {
+  font-size: 22px;
+  flex-shrink: 0;
+  width: 30px;
+  text-align: center;
+}
+
+.achievement-card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.achievement-card-name {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.achievement-card-desc {
+  font-size: 11px;
+  color: #b7cdd8;
+  margin-top: 2px;
+}
+
+.achievement-card-reward {
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffd479;
+  flex-shrink: 0;
+}
+
+/* ---------- Settings: audio sliders / checkbox ---------- */
+.pause-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  margin: 10px 0 18px;
+  cursor: pointer;
+}
+
+/* ---------- Daily reward modal ---------- */
+.daily-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.65);
+  z-index: 90;
+}
+
+.daily-modal {
+  width: 300px;
+  max-width: 88vw;
+  background: rgba(10, 25, 35, 0.95);
+  border: 1px solid rgba(255, 212, 121, 0.4);
+  border-radius: 16px;
+  padding: 28px 24px 24px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+}
+
+.daily-modal-icon {
+  font-size: 44px;
+}
+
+.daily-modal h3 {
+  margin: 8px 0 4px;
+  font-size: 20px;
+}
+
+.daily-modal-streak {
+  color: #b7cdd8;
+  font-size: 13px;
+  margin: 0 0 12px;
+}
+
+.daily-modal-reward {
+  font-size: 26px;
+  font-weight: 800;
+  color: #ffd479;
+  margin-bottom: 18px;
+}
+
+.daily-claim-btn {
+  width: 100%;
+}
+
+/* ---------- Tutorial overlay ---------- */
+.tutorial-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.75);
+  z-index: 95;
+  padding: 20px;
+}
+
+.tutorial-modal {
+  width: 420px;
+  max-width: 92vw;
+  max-height: 88vh;
+  overflow-y: auto;
+  background: rgba(10, 25, 35, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 16px;
+  padding: 26px 24px 22px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+}
+
+.tutorial-modal h2 {
+  margin: 0 0 18px;
+  font-size: 20px;
+}
+
+.tutorial-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  text-align: left;
+  margin-bottom: 20px;
+}
+
+.tutorial-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #dce9f0;
+}
+
+.tutorial-step-icon {
+  font-size: 22px;
+  flex-shrink: 0;
+  width: 28px;
+  text-align: center;
+}
+
+.tutorial-step b {
+  color: #fff;
+}
+
+.tutorial-start-btn {
+  width: 100%;
 }

@@ -24,6 +24,8 @@ import {
 } from './store.js'
 import { getLevelInfo } from './leveling.js'
 import { DEFAULT_AVATAR, AVATAR_OPTIONS } from './avatar.js'
+import { ACHIEVEMENTS, evaluate as evaluateAchievements } from './achievements.js'
+import { playUIClick, playPurchase, setSfxVolume, setMusicVolume, setMusicMuted } from './audio.js'
 
 const CAT_LINES = [
   'Meong! Mau beli apa hari ini?',
@@ -48,6 +50,7 @@ export class PauseMenu {
       getTotalPoints,
       onStoreChange,
       onAvatarChange,
+      getAchievementsState,
     }
   ) {
     this.onResume = onResume
@@ -58,6 +61,7 @@ export class PauseMenu {
     this.spendScore = spendScore ?? (() => false)
     this.getTotalPoints = getTotalPoints ?? (() => 0)
     this.onStoreChange = onStoreChange
+    this.getAchievementsState = getAchievementsState ?? (() => ({ stats: null, claimedIds: new Set() }))
     // Signed-in players get their collection from Supabase (synced across
     // devices); guests fall back to the local browser copy.
     this.userId = userId ?? null
@@ -82,6 +86,7 @@ export class PauseMenu {
           <button id="pause-resume" class="pause-btn primary">▶ Main</button>
           <button id="pause-profile" class="pause-btn">👤 Profil</button>
           <button id="pause-gallery" class="pause-btn">🐟 Koleksi Ikan</button>
+          <button id="pause-achievements" class="pause-btn">🏅 Pencapaian</button>
           <button id="pause-store" class="pause-btn">🛒 Toko</button>
           <button id="pause-leaderboard" class="pause-btn">🏆 Papan Skor</button>
           <button id="pause-settings" class="pause-btn">⚙️ Pengaturan</button>
@@ -105,6 +110,16 @@ export class PauseMenu {
           <h3>Pengaturan</h3>
           <label id="pause-sensitivity-label">Sensitivitas lihat sekitar: <span id="sensitivity-value"></span></label>
           <input type="range" id="pause-sensitivity" min="0.3" max="2" step="0.1" />
+          <label id="pause-sfx-label">Volume efek suara: <span id="sfx-value"></span></label>
+          <input type="range" id="pause-sfx" min="0" max="1" step="0.05" />
+          <label id="pause-music-label">Volume musik: <span id="music-value"></span></label>
+          <input type="range" id="pause-music" min="0" max="1" step="0.05" />
+          <label class="pause-checkbox-label"><input type="checkbox" id="pause-music-mute" /> Matikan musik latar</label>
+          <button class="pause-btn back-btn" data-back="main">← Kembali</button>
+        </div>
+        <div id="pause-view-achievements" class="pause-view hidden">
+          <h3>Pencapaian <span id="achievements-progress"></span></h3>
+          <div id="achievements-list"></div>
           <button class="pause-btn back-btn" data-back="main">← Kembali</button>
         </div>
         <div id="pause-view-gallery" class="pause-view hidden">
@@ -142,6 +157,7 @@ export class PauseMenu {
       main: this.el.querySelector('#pause-view-main'),
       leaderboard: this.el.querySelector('#pause-view-leaderboard'),
       settings: this.el.querySelector('#pause-view-settings'),
+      achievements: this.el.querySelector('#pause-view-achievements'),
       gallery: this.el.querySelector('#pause-view-gallery'),
       'gallery-detail': this.el.querySelector('#pause-view-gallery-detail'),
       'item-detail': this.el.querySelector('#pause-view-item-detail'),
@@ -157,6 +173,13 @@ export class PauseMenu {
     this.el.querySelector('#pause-store').addEventListener('click', () => this._showStore())
     this.el.querySelector('#pause-profile').addEventListener('click', () => this._showProfile())
     this.el.querySelector('#pause-logout').addEventListener('click', () => this._logout())
+    this.el.querySelector('#pause-achievements').addEventListener('click', () => this._showAchievements())
+    // A light click sound on literally any button inside this menu (buy
+    // buttons, back buttons, avatar picker, everything) — cheaper than
+    // wiring it individually everywhere.
+    this.el.addEventListener('click', (e) => {
+      if (e.target.closest('button')) playUIClick()
+    })
     this.el.querySelectorAll('[data-back]').forEach((btn) =>
       btn.addEventListener('click', () => this._showView(btn.dataset.back))
     )
@@ -182,6 +205,60 @@ export class PauseMenu {
       saveSettings()
       onSensitivityChange?.(v)
     })
+
+    const sfxSlider = this.el.querySelector('#pause-sfx')
+    const sfxLabel = this.el.querySelector('#sfx-value')
+    sfxSlider.value = settings.sfxVolume
+    sfxLabel.textContent = Math.round(settings.sfxVolume * 100) + '%'
+    sfxSlider.addEventListener('input', () => {
+      const v = parseFloat(sfxSlider.value)
+      sfxLabel.textContent = Math.round(v * 100) + '%'
+      setSfxVolume(v)
+    })
+
+    const musicSlider = this.el.querySelector('#pause-music')
+    const musicLabel = this.el.querySelector('#music-value')
+    musicSlider.value = settings.musicVolume
+    musicLabel.textContent = Math.round(settings.musicVolume * 100) + '%'
+    musicSlider.addEventListener('input', () => {
+      const v = parseFloat(musicSlider.value)
+      musicLabel.textContent = Math.round(v * 100) + '%'
+      setMusicVolume(v)
+    })
+
+    const muteCheckbox = this.el.querySelector('#pause-music-mute')
+    muteCheckbox.checked = !!settings.musicMuted
+    muteCheckbox.addEventListener('change', () => {
+      setMusicMuted(muteCheckbox.checked)
+    })
+  }
+
+  _showAchievements() {
+    this._showView('achievements')
+    const { stats, claimedIds } = this.getAchievementsState()
+    const list = this.el.querySelector('#achievements-list')
+    if (!stats) {
+      list.innerHTML = '<p class="gallery-status">Tidak tersedia.</p>'
+      return
+    }
+    const unlockedIds = new Set(evaluateAchievements(stats).map((a) => a.id))
+    const claimedCount = ACHIEVEMENTS.filter((a) => claimedIds.has(a.id)).length
+    this.el.querySelector('#achievements-progress').textContent = `(${claimedCount}/${ACHIEVEMENTS.length})`
+    list.innerHTML = ACHIEVEMENTS.map((a) => {
+      const claimed = claimedIds.has(a.id)
+      const unlocked = unlockedIds.has(a.id)
+      const cls = claimed ? 'claimed' : unlocked ? 'unlocked' : 'locked'
+      return `
+        <div class="achievement-card ${cls}">
+          <div class="achievement-card-icon">${claimed || unlocked ? a.emoji : '🔒'}</div>
+          <div class="achievement-card-body">
+            <div class="achievement-card-name">${escapeHtml(a.name)}</div>
+            <div class="achievement-card-desc">${escapeHtml(a.desc)}</div>
+          </div>
+          <div class="achievement-card-reward">${claimed ? '✅' : `+${a.reward} 🪙`}</div>
+        </div>
+      `
+    }).join('')
   }
 
   _showView(name) {
@@ -355,6 +432,7 @@ export class PauseMenu {
     const newTier = ownedTier + 1
     setGearTier(lineId, newTier)
     if (this.userId) addInventoryItem(this.userId, gearJenisId(lineId, newTier)).catch(() => {})
+    playPurchase()
     this.onStoreChange?.()
     this._renderStore()
   }
@@ -367,6 +445,7 @@ export class PauseMenu {
     if (!this.spendScore(item.price)) return
     markOwned(itemId)
     if (this.userId) addInventoryItem(this.userId, itemId).catch(() => {})
+    playPurchase()
     this.onStoreChange?.()
     this._renderStore()
   }

@@ -14,12 +14,23 @@ function load() {
 
 export const settings = {
   lookSensitivity: 1,
+  sfxVolume: 0.8,
+  musicVolume: 0.35,
+  musicMuted: false,
   ...load(),
 }
 
 export function saveSettings() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ lookSensitivity: settings.lookSensitivity }))
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        lookSensitivity: settings.lookSensitivity,
+        sfxVolume: settings.sfxVolume,
+        musicVolume: settings.musicVolume,
+        musicMuted: settings.musicMuted,
+      })
+    )
   } catch {
     // Storage unavailable (private browsing, etc.) — not critical.
   }

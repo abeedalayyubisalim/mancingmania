@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { rollFish, rollWeight, pointsForWeight, catchPatternFor } from './fish-data.js'
 import { getRareBonus, getLegendaryBonus, getBiteSpeedBonus } from '../store.js'
+import { playCast, playBite, playPatternHit, playPatternMiss, playEscape, playCatch } from '../audio.js'
 
 const STATE = {
   IDLE: 'idle',
@@ -121,6 +122,7 @@ export class Fishing {
     this.bobber.visible = true
     this.line.visible = true
     this._setStatus('Melempar kail...')
+    playCast()
   }
 
   _startWaiting() {
@@ -134,6 +136,7 @@ export class Fishing {
     this.state = STATE.BITE
     this._biteTimer = BITE_WINDOW
     this._setStatus('IKAN MENGGIGIT! Klik sekarang!', { alert: true })
+    playBite()
   }
 
   _hookFish() {
@@ -182,6 +185,7 @@ export class Fishing {
     if (inZone) {
       this.currentBeat++
       this._hitFlash = 0.25
+      playPatternHit()
       if (this.currentBeat >= this.pattern.beats) {
         this._catchFish()
         return
@@ -190,6 +194,7 @@ export class Fishing {
     } else {
       this.misses++
       this._missFlash = 0.25
+      playPatternMiss()
       if (this.misses > this.pattern.maxMisses) {
         this._fishEscapes('Polanya meleset terus, ikan lepas!')
       }
@@ -201,6 +206,7 @@ export class Fishing {
     this.bobber.visible = false
     this.line.visible = false
     this.currentFish = null
+    playEscape()
     this.onMiss?.(reason)
     this._setStatus(reason, { reset: true })
   }
@@ -211,6 +217,7 @@ export class Fishing {
     this.bobber.visible = false
     this.line.visible = false
     this.currentFish = null
+    playCatch(fish)
     this.onCatch?.(fish)
     this._setStatus(
       fish.junk

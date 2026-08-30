@@ -10,11 +10,30 @@ import { fetchProfile, syncPoints, updateAvatar, fetchLeaderboard, fetchInventor
 import { PauseMenu } from './pause-menu.js'
 import { TouchControls } from './touch-controls.js'
 import { isTouchDevice } from './settings.js'
-import { recordCatch } from './collection.js'
-import { getCosmeticBadge, applySyncedInventory } from './store.js'
+import { recordCatch, allEntries as allCollectionEntries, groupInventoryRows } from './collection.js'
+import { getCosmeticBadge, applySyncedInventory, getGearTier, getOwned, GEAR_LINES } from './store.js'
 import { getLevelInfo } from './leveling.js'
 import { loadLocalWallet, saveLocalWallet } from './wallet-storage.js'
 import { DEFAULT_AVATAR, loadLocalAvatar, saveLocalAvatar } from './avatar.js'
+import {
+  evaluate as evaluateAchievements,
+  isClaimedLocally as isAchievementClaimedLocally,
+  markClaimedLocally as markAchievementClaimedLocally,
+  claimedIdsFromInventory,
+  achievementJenisId,
+  ACHIEVEMENTS,
+} from './achievements.js'
+import {
+  isClaimedToday as isDailyClaimedToday,
+  computeStreak as computeDailyStreak,
+  rewardForStreak as dailyRewardForStreak,
+  showDailyRewardModal,
+  dailyJenisId,
+  todayDailyKey,
+  markClaimedLocally as markDailyClaimedLocally,
+} from './daily-reward.js'
+import { hasSeenTutorial, showTutorial } from './tutorial.js'
+import { unlockAudio, playAchievement, playDailyReward } from './audio.js'
 
 const app = document.querySelector('#app')
 
@@ -28,14 +47,13 @@ async function main() {
   let totalPoints = 0
   let wallet = 0
   let avatar = DEFAULT_AVATAR
+  let inventoryRows = []
   if (session?.user) {
-    const [profile, inventoryRows] = await Promise.all([
-      fetchProfile(session.user.id),
-      fetchInventory(session.user.id),
-    ])
+    const [profile, rows] = await Promise.all([fetchProfile(session.user.id), fetchInventory(session.user.id)])
     totalPoints = profile.points
     wallet = profile.wallet
     avatar = profile.avatar || DEFAULT_AVATAR
+    inventoryRows = rows
     // Bring any gear/cosmetics bought on another device into this
     // browser's local cache too, so bonuses apply immediately.
     applySyncedInventory(inventoryRows)
@@ -46,10 +64,10 @@ async function main() {
     avatar = loadLocalAvatar()
   }
 
-  startGame({ session, username, guest, totalPoints, wallet, avatar })
+  startGame({ session, username, guest, totalPoints, wallet, avatar, inventoryRows })
 }
 
-function startGame({ session, username, guest, totalPoints, wallet, avatar }) {
+function startGame({ session, username, guest, totalPoints, wallet, avatar, inventoryRows }) {
   const touch = isTouchDevice()
 
   app.innerHTML = `
@@ -72,10 +90,77 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar }) {
   }
 
   // Persists points/wallet to Supabase (logged in) or this browser (guest)
-  // whenever either one changes — catch, or store purchase.
+  // whenever either one changes — catch, store purchase, achievement, or
+  // daily reward. Shows a small "Menyimpan.../Tersimpan" indicator for
+  // logged-in players so progress loss never feels silent/uncertain.
   function persistPoints() {
-    if (session?.user) syncPoints(session.user.id, username, totalPoints, wallet).catch(() => {})
-    else saveLocalWallet(totalPoints, wallet)
+    if (session?.user) {
+      hud.setSyncStatus('saving')
+      syncPoints(session.user.id, username, totalPoints, wallet)
+        .then(() => hud.setSyncStatus('saved'))
+        .catch(() => hud.setSyncStatus('error'))
+    } else {
+      saveLocalWallet(totalPoints, wallet)
+    }
+  }
+
+  // ---- Achievements -------------------------------------------------
+  // "Claimed" achievement ids — merged from Supabase (cross-device, for
+  // logged-in players) or this browser's local storage (guests).
+  const claimedAchievementIds = session?.user
+    ? claimedIdsFromInventory(inventoryRows)
+    : new Set(ACHIEVEMENTS.map((a) => a.id).filter(isAchievementClaimedLocally))
+  // Snapshot of catch counts from Supabase at login time, so achievement
+  // progress correctly includes catches made on other devices — merged
+  // with this browser's own live local collection as the session goes on.
+  const initialGrouped = session?.user ? groupInventoryRows(inventoryRows) : {}
+
+  function currentGrouped() {
+    const merged = { ...initialGrouped }
+    for (const [id, entry] of Object.entries(allCollectionEntries())) {
+      const existing = merged[id]
+      merged[id] = {
+        count: Math.max(existing?.count ?? 0, entry.count),
+        firstCaughtAt: Math.min(existing?.firstCaughtAt ?? Infinity, entry.firstCaughtAt),
+        maxWeight: Math.max(existing?.maxWeight ?? 0, entry.maxWeight ?? 0),
+      }
+    }
+    return merged
+  }
+
+  function currentAchievementStats() {
+    return {
+      grouped: currentGrouped(),
+      level: getLevelInfo(totalPoints).level,
+      gearTiers: Object.fromEntries(GEAR_LINES.map((l) => [l.id, getGearTier(l.id)])),
+      cosmeticsCount: getOwned().length,
+    }
+  }
+
+  // Checks for newly-unlocked achievements and auto-claims them (coin
+  // reward + persisted claim). `silent` skips the toast/sound — used once
+  // at startup so a returning player with lots of prior progress doesn't
+  // get bombarded with achievement popups the instant the game loads.
+  function checkAchievements(silent = false) {
+    const stats = currentAchievementStats()
+    const unlocked = evaluateAchievements(stats)
+    let anyNew = false
+    for (const ach of unlocked) {
+      if (claimedAchievementIds.has(ach.id)) continue
+      claimedAchievementIds.add(ach.id)
+      wallet += ach.reward
+      anyNew = true
+      if (!silent) {
+        hud.showAchievementToast(ach)
+        playAchievement()
+      }
+      if (session?.user) addInventoryItem(session.user.id, achievementJenisId(ach.id)).catch(() => {})
+      else markAchievementClaimedLocally(ach.id)
+    }
+    if (anyNew) {
+      hud.setScore(wallet)
+      persistPoints()
+    }
   }
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
@@ -117,6 +202,7 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar }) {
         if (newLevel > prevLevel) hud.showLevelUp(newLevel)
         persistPoints()
       }
+      checkAchievements()
       // The share button on the catch popup is unusable while the mouse
       // is pointer-locked (cursor hidden/captured, and the global
       // mousedown listener in fishing.js would treat the click as a new
@@ -153,13 +239,18 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar }) {
     onSensitivityChange: (v) => {
       player.controls.pointerSpeed = v
     },
-    onStoreChange: () => hud.setBadge(getCosmeticBadge()),
+    onStoreChange: () => {
+      hud.setBadge(getCosmeticBadge())
+      checkAchievements()
+    },
     onAvatarChange: (newAvatar) => {
       avatar = newAvatar
       if (session?.user) updateAvatar(session.user.id, newAvatar).catch(() => {})
       else saveLocalAvatar(newAvatar)
     },
+    getAchievementsState: () => ({ stats: currentAchievementStats(), claimedIds: claimedAchievementIds }),
     onResume: () => {
+      unlockAudio()
       if (touch) {
         paused = false
         pauseMenu.close()
@@ -189,7 +280,45 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar }) {
       if (!paused) openPause()
     })
   }
-  pauseMenu.open()
+
+  // Silently reconcile any achievements already earned before this feature
+  // existed (or on another device), then show the first-run tutorial (new
+  // players only) followed by today's login bonus, if not yet claimed.
+  checkAchievements(true)
+
+  function maybeShowDailyReward() {
+    const rows = session?.user ? inventoryRows : null
+    if (isDailyClaimedToday(rows)) return
+    const streakAfter = computeDailyStreak(rows) + 1
+    const reward = dailyRewardForStreak(streakAfter)
+    showDailyRewardModal({
+      streak: streakAfter,
+      reward,
+      onClaim: () => {
+        unlockAudio()
+        playDailyReward()
+        wallet += reward
+        hud.setScore(wallet)
+        persistPoints()
+        if (session?.user) addInventoryItem(session.user.id, dailyJenisId(todayDailyKey())).catch(() => {})
+        else markDailyClaimedLocally()
+      },
+    })
+  }
+
+  if (!hasSeenTutorial()) {
+    showTutorial({
+      touch,
+      onDone: () => {
+        unlockAudio()
+        pauseMenu.open()
+        maybeShowDailyReward()
+      },
+    })
+  } else {
+    pauseMenu.open()
+    maybeShowDailyReward()
+  }
 
   // ---- Touch controls (phones/tablets) ---------------------------------
   let touchControls = null
@@ -202,6 +331,7 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar }) {
         if (!paused) player.applyLookDelta(dx, dy)
       },
       onActionStart: () => {
+        unlockAudio()
         if (!paused) fishing.pressAction()
       },
       onActionEnd: () => {
