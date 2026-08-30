@@ -945,6 +945,14 @@ html, body {
   overflow-y: auto;
 }
 
+/* Koleksi is one of the views that widens #pause-card to pause-card-xwide
+   (see PauseMenu._showView) — more columns to actually use the room,
+   instead of just stretching 3 wide cards across it. */
+#pause-card.pause-card-xwide #gallery-grid {
+  grid-template-columns: repeat(5, 1fr);
+  max-height: 420px;
+}
+
 .gallery-card {
   display: flex;
   flex-direction: column;
@@ -1067,6 +1075,14 @@ html, body {
   margin-bottom: 6px;
   max-height: 380px;
   overflow-y: auto;
+}
+
+/* Toko also widens #pause-card to pause-card-xwide (see
+   PauseMenu._showView) — more columns so browsing gear/cosmetics doesn't
+   mean one long scroll. */
+#pause-card.pause-card-xwide #store-grid {
+  grid-template-columns: repeat(4, 1fr);
+  max-height: 440px;
 }
 
 .store-card {
@@ -1518,6 +1534,24 @@ html, body {
   background: rgba(55, 163, 224, 0.6);
 }
 
+#touch-jump-btn {
+  position: absolute;
+  right: 40px;
+  bottom: 128px;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  font-size: 22px;
+  z-index: 5;
+  touch-action: none;
+}
+
+#touch-jump-btn:active {
+  background: rgba(255, 255, 255, 0.3);
+}
+
 #touch-pause-btn {
   position: absolute;
   top: 16px;
@@ -1553,6 +1587,17 @@ html, body {
 
   .touch-mode #status-box {
     width: 78vw;
+  }
+
+  /* pause-card-xwide is still capped by #pause-card's own max-width:88vw,
+     but a phone-width 88vw is too narrow for 4-5 grid columns — fall back
+     to the normal column counts instead of squeezing tiny cards in. */
+  #pause-card.pause-card-xwide #store-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  #pause-card.pause-card-xwide #gallery-grid {
+    grid-template-columns: repeat(3, 1fr);
   }
 }
 
@@ -2607,7 +2652,9 @@ html, body {
   font-size: 12px;
   padding: 7px 14px;
   border-radius: 8px;
-  white-space: nowrap;
+  max-width: min(420px, 80vw);
+  text-align: center;
+  white-space: normal;
 }
 
 #survival-toast.hidden {

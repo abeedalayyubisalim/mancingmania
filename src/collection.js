@@ -72,3 +72,44 @@ export function groupInventoryRows(rows) {
   }
   return grouped
 }
+
+// ---- Weekly reset event --------------------------------------------------
+// Every Monday (UTC), this browser's local fish dex clears out — a
+// deliberate weekly "start fresh" event, not a bug. Store purchases live in
+// store.js's own separate localStorage slot and are never touched here.
+// Logged-in players go through the same event server-side too (their
+// Supabase inventory fish rows — see main.js), since this local cache gets
+// merged on top of that snapshot during play; guests only have this local
+// copy, so it's the entire event for them.
+const RESET_KEY = 'fishing-fps-collection-last-reset'
+
+function mostRecentMondayUTC(now = new Date()) {
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+  const day = d.getUTCDay() // 0=Sun..6=Sat
+  d.setUTCDate(d.getUTCDate() - ((day + 6) % 7)) // back up to Monday
+  return d
+}
+
+// Call once at startup. Clears the local fish dex if a new week has begun
+// since the last time this ran; a harmless no-op otherwise. Returns true if
+// it actually cleared something (so callers can react if they want to).
+export function maybeWeeklyReset() {
+  const boundary = mostRecentMondayUTC()
+  let last = null
+  try {
+    const raw = localStorage.getItem(RESET_KEY)
+    last = raw ? new Date(raw) : null
+  } catch {
+    // Storage unavailable — skip for now, next launch tries again.
+  }
+  if (last && last >= boundary) return false
+  const hadAny = Object.keys(state).length > 0
+  for (const key of Object.keys(state)) delete state[key]
+  save()
+  try {
+    localStorage.setItem(RESET_KEY, new Date().toISOString())
+  } catch {
+    // Ignore — worst case this check just runs again next launch too.
+  }
+  return hadAny
+}

@@ -445,8 +445,8 @@ export class PauseMenu {
     // its two-column "character left, stats right" hero layout — both get
     // a one-off widen of the normally-narrow 300px #pause-card.
     const card = this.el.querySelector('#pause-card')
-    card?.classList.toggle('pause-card-wide', name === 'match-detail')
-    card?.classList.toggle('pause-card-xwide', name === 'profile')
+    card?.classList.toggle('pause-card-wide', name === 'match-detail' || name === 'achievements')
+    card?.classList.toggle('pause-card-xwide', name === 'profile' || name === 'store' || name === 'gallery')
   }
 
   // A generic "not built yet" placeholder (Survival, Multiplayer for now)

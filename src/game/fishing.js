@@ -32,6 +32,7 @@ export class Fishing {
     getExtraBiteSpeedBonus,
     getExtraLegendaryBonus,
     getCatchStatusText,
+    canCast,
   }) {
     this.scene = scene
     this.camera = camera
@@ -51,6 +52,11 @@ export class Fishing {
     // line with something else (Hunger restored instead of points) — see
     // main.js. Returning a falsy value from it falls back to the default.
     this.getCatchStatusText = getCatchStatusText ?? (() => null)
+    // Gate on actually being near water (Survival mode, off in the middle
+    // of the forest/mountain — there's no fishing on dry land) — see
+    // main.js's canFishHere. Defaults to "always allowed" so Normal mode's
+    // dock (always right at the water's edge) is unaffected.
+    this.canCast = canCast ?? (() => true)
 
     this.state = STATE.IDLE
     this.power = 0
@@ -110,6 +116,11 @@ export class Fishing {
   pressAction() {
     this.holding = true
     if (this.state === STATE.IDLE) {
+      if (!this.canCast()) {
+        this.holding = false
+        this._setStatus('Gak ada air di sini — cari laut, sungai, atau danau dulu.', { reset: true })
+        return
+      }
       this.state = STATE.CHARGING
       this.power = 0
       this._setStatus('Mengisi tenaga lemparan...', { power: 0 })

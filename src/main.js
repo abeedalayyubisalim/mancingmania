@@ -12,6 +12,7 @@ import {
   SURVIVAL_LAKE_POSITION,
   SURVIVAL_RIVER_POSITION,
   SURVIVAL_SPAWN_POSITION,
+  isNearSurvivalCoast,
 } from './game/scene.js'
 import { Water } from './game/water.js'
 import { Player, DEFAULT_ROD_COLOR } from './game/player.js'
@@ -19,12 +20,22 @@ import { Fishing } from './game/fishing.js'
 import { DayNightCycle } from './game/daynight.js'
 import { SurvivalSession, foodValueFor, TOTAL_DAYS as SURVIVAL_TOTAL_DAYS } from './game/survival.js'
 import { showSleepTransition, hideSleepTransition, showSurvivalEnd } from './survival-ui.js'
-import { fetchProfile, syncPoints, updateAvatar, fetchInventory, addInventoryItem, fetchFriends } from './supabase-client.js'
+import {
+  fetchProfile,
+  syncPoints,
+  updateAvatar,
+  fetchInventory,
+  fetchInventoryWithIds,
+  deleteInventoryRows,
+  updateLastWeeklyReset,
+  addInventoryItem,
+  fetchFriends,
+} from './supabase-client.js'
 import { PauseMenu } from './pause-menu.js'
 import { TouchControls } from './touch-controls.js'
 import { isTouchDevice } from './settings.js'
-import { recordCatch, allEntries as allCollectionEntries, groupInventoryRows } from './collection.js'
-import { getCosmeticBadge, applySyncedInventory, getGearTier, getOwned, GEAR_LINES, getSkinColor } from './store.js'
+import { recordCatch, allEntries as allCollectionEntries, groupInventoryRows, maybeWeeklyReset } from './collection.js'
+import { getCosmeticBadge, applySyncedInventory, getGearTier, getOwned, GEAR_LINES, getSkinColor, syncStoreOwner, isStoreItemJenis } from './store.js'
 import { getLevelInfo } from './leveling.js'
 import { loadLocalWallet, saveLocalWallet } from './wallet-storage.js'
 import { DEFAULT_AVATAR, loadLocalAvatar, saveLocalAvatar } from './avatar.js'
@@ -53,8 +64,44 @@ import { showCountdown, hideCountdown, showMatchResults } from './multiplayer-ui
 
 const app = document.querySelector('#app')
 
+// Weekly reset event: every Monday (UTC), a player's caught-fish history
+// clears out so the collection/leaderboard starts fresh for the new week —
+// store purchases (gear tiers, cosmetics) and claim markers (achievements,
+// daily reward) are never touched, only actual fish-catch rows. There's no
+// server cron for this — it's simply checked here, once, the first time a
+// player loads the game after the boundary has passed.
+function mostRecentMondayUTC(now = new Date()) {
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+  const day = d.getUTCDay() // 0=Sun..6=Sat
+  d.setUTCDate(d.getUTCDate() - ((day + 6) % 7)) // back up to Monday
+  return d
+}
+
+// True for an inventory row that's an actual fish catch — i.e. everything
+// that ISN'T a store purchase (isStoreItemJenis) or a claim marker
+// (achievement/daily-reward rows, which reuse this same table but must
+// survive the reset just like store items do).
+function isFishCatchJenis(jenis) {
+  if (isStoreItemJenis(jenis)) return false
+  if (/^ach_/.test(jenis)) return false
+  if (/^daily_/.test(jenis)) return false
+  return true
+}
+
 async function main() {
   const { session, username, guest } = await showAuthGate(app)
+
+  // Reconcile this browser's local gear/cosmetic cache with whoever is
+  // actually signing in now — see store.js's syncStoreOwner for why this
+  // matters (a deleted-then-recreated account on the same browser used to
+  // inherit the old account's purchases). Must run before
+  // applySyncedInventory below.
+  syncStoreOwner(session?.user?.id ?? null)
+
+  // Guest side of the weekly reset event (see mostRecentMondayUTC above) —
+  // logged-in players are handled below, after their Supabase profile has
+  // loaded (it's what remembers when THEIR last reset happened).
+  maybeWeeklyReset()
 
   // Load the player's existing lifetime points + wallet + avatar so
   // nothing resets to 0/default every time you log back in — logged-in
@@ -73,6 +120,24 @@ async function main() {
     // Bring any gear/cosmetics bought on another device into this
     // browser's local cache too, so bonuses apply immediately.
     applySyncedInventory(inventoryRows)
+
+    // Logged-in side of the weekly reset event. profile.lastWeeklyReset is
+    // this player's own stamp (Supabase), separate from the guest-only
+    // localStorage one maybeWeeklyReset() above uses.
+    const resetBoundary = mostRecentMondayUTC()
+    const lastReset = profile.lastWeeklyReset ? new Date(profile.lastWeeklyReset) : null
+    if (!lastReset || lastReset < resetBoundary) {
+      const idRows = await fetchInventoryWithIds(session.user.id)
+      const fishRowIds = idRows.filter((r) => isFishCatchJenis(r.jenis)).map((r) => r.id)
+      if (fishRowIds.length) {
+        await deleteInventoryRows(session.user.id, fishRowIds)
+        // Re-fetch so everything downstream (collection gallery, achievement
+        // progress snapshot) reflects the wipe instead of stale rows already
+        // held in memory.
+        inventoryRows = await fetchInventory(session.user.id)
+      }
+      updateLastWeeklyReset(session.user.id, new Date().toISOString()).catch(() => {})
+    }
   } else {
     const local = loadLocalWallet()
     totalPoints = local.points
@@ -375,6 +440,8 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
     })
   }
 
+  // `spot` is 'lake' | 'river' | 'sea' | null — null means dry land (no
+  // fishing there, see canFishHere below).
   function getFishingZone() {
     if (survival.active) {
       // Sub-tahap Survival-B: fishing near the river/lake favors the
@@ -384,27 +451,52 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
       if (dLake < LAKE_RADIUS) return { freshwater: true, spot: 'lake' }
       const dRiver = Math.hypot(camera.position.x - SURVIVAL_RIVER_POSITION.x, camera.position.z - SURVIVAL_RIVER_POSITION.z)
       if (dRiver < RIVER_RADIUS) return { freshwater: true, spot: 'river' }
-      return { freshwater: false, spot: 'sea' }
+      if (isNearSurvivalCoast(camera.position.x, camera.position.z)) return { freshwater: false, spot: 'sea' }
+      return { freshwater: false, spot: null }
     }
     const dist = Math.hypot(camera.position.x, camera.position.z)
     const deepSea = player.mode === 'boat' && dist > OPEN_SEA_RADIUS
     return { deepSea, deepSeaBonus: deepSea ? 0.5 : 0 }
   }
 
+  // No fishing in the middle of the forest/mountain — has to be at the
+  // coast, the river, or the lake. Only Survival has enough dry land to
+  // matter; Normal mode's dock/boat are always right at the water.
+  function canFishHere() {
+    if (!survival.active) return true
+    return getFishingZone().spot !== null
+  }
+
   // A quick one-time toast the moment you wander into fishing range of the
-  // river or lake during Survival, so it's clear those spots fish
-  // differently from the open sea — not spammed every frame.
+  // river, lake, or coast during Survival, so it's clear those spots fish
+  // differently from open land — not spammed every frame.
   let lastSurvivalSpot = null
+  // Throttles the "go find water" nudge below so it reminds, not nags.
+  let lastThirstNudge = 0
+  const THIRST_NUDGE_THRESHOLD = 30
+  const THIRST_NUDGE_COOLDOWN_MS = 20000
+
   function updateSurvivalZoneHint() {
     if (!survival.active) {
       lastSurvivalSpot = null
       return
     }
     const { spot } = getFishingZone()
-    if (spot === lastSurvivalSpot) return
-    lastSurvivalSpot = spot
-    if (spot === 'lake') hud.showSurvivalToast('🏞️ Danau — ikan air tawar lebih sering muncul di sini.')
-    else if (spot === 'river') hud.showSurvivalToast('🏞️ Sungai — ikan air tawar lebih sering muncul di sini.')
+    if (spot !== lastSurvivalSpot) {
+      lastSurvivalSpot = spot
+      if (spot === 'lake') hud.showSurvivalToast('🏞️ Danau — ikan air tawar lebih sering muncul di sini.')
+      else if (spot === 'river') hud.showSurvivalToast('🏞️ Sungai — ikan air tawar lebih sering muncul di sini.')
+      else if (spot === 'sea') hud.showSurvivalToast('🌊 Pantai — bisa mancing di sini.')
+      return
+    }
+    // Getting thirsty and not already at a drinkable spot — nudge toward
+    // the river/lake (also answers "where do I drink?" proactively).
+    if (spot === 'lake' || spot === 'river') return
+    if (survival.thirst >= THIRST_NUDGE_THRESHOLD) return
+    const now = Date.now()
+    if (now - lastThirstNudge < THIRST_NUDGE_COOLDOWN_MS) return
+    lastThirstNudge = now
+    hud.showSurvivalToast('🚰 Hausmu rendah! Cari sungai atau danau buat minum.', 4000)
   }
 
   const fishing = new Fishing({
@@ -415,6 +507,7 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
     domElement: renderer.domElement,
     onStatus: (text, opts) => hud.setStatus(text, opts),
     getZone: getFishingZone,
+    canCast: canFishHere,
     getExtraBiteSpeedBonus: () => dayNight.getRainBiteBonus(),
     getExtraLegendaryBonus: () => dayNight.getNightLegendaryBonus(),
     // Survival catches feed Hunger instead of the "Dapat X! +N poin" line —
@@ -538,6 +631,12 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
     hud.showSurvivalHud()
     hud.updateSurvivalStats(survival.snapshot())
     enterGame()
+    lastSurvivalSpot = null
+    lastThirstNudge = 0
+    hud.showSurvivalToast(
+      '🏝️ Terdampar! Mancing cuma bisa di pantai, sungai, atau danau. Minum di sungai/danau. Malam hari, tidur di gua (dekat gunung) biar aman.',
+      7000
+    )
   }
 
   survival.onStatChange = (snapshot) => hud.updateSurvivalStats(snapshot)
@@ -656,6 +755,9 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
       },
       onActionEnd: () => {
         if (!paused) fishing.releaseAction()
+      },
+      onJump: () => {
+        if (!paused) player.jump()
       },
       onPause: () => {
         if (paused) {

@@ -2,12 +2,13 @@
 // a drag area to look around, a big fishing action button, and a pause
 // button (there's no Escape key on a touchscreen).
 export class TouchControls {
-  constructor(root, { onMove, onLook, onActionStart, onActionEnd, onPause }) {
+  constructor(root, { onMove, onLook, onActionStart, onActionEnd, onPause, onJump }) {
     this.onMove = onMove
     this.onLook = onLook
     this.onActionStart = onActionStart
     this.onActionEnd = onActionEnd
     this.onPause = onPause
+    this.onJump = onJump
 
     const wrap = document.createElement('div')
     wrap.id = 'touch-controls'
@@ -15,6 +16,7 @@ export class TouchControls {
       <div id="touch-lookpad"></div>
       <div id="touch-joystick"><div id="touch-joystick-knob"></div></div>
       <button id="touch-pause-btn" aria-label="Menu">☰</button>
+      <button id="touch-jump-btn" aria-label="Lompat">⤴️</button>
       <button id="touch-action-btn" aria-label="Pancing">🎣</button>
     `
     root.appendChild(wrap)
@@ -24,6 +26,7 @@ export class TouchControls {
     this.lookpad = wrap.querySelector('#touch-lookpad')
     this.actionBtn = wrap.querySelector('#touch-action-btn')
     this.pauseBtn = wrap.querySelector('#touch-pause-btn')
+    this.jumpBtn = wrap.querySelector('#touch-jump-btn')
 
     this._joystickId = null
     this._lookId = null
@@ -34,6 +37,14 @@ export class TouchControls {
     this._wireAction()
 
     this.pauseBtn.addEventListener('click', () => this.onPause?.())
+    this.jumpBtn.addEventListener(
+      'touchstart',
+      (e) => {
+        e.preventDefault()
+        this.onJump?.()
+      },
+      { passive: false }
+    )
   }
 
   _wireJoystick() {

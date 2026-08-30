@@ -339,7 +339,7 @@ export class Hud {
   // A quick, small, transient message for Survival feed/drink/sleep events —
   // separate from the fishing status line (#status-text, which fishing.js
   // drives directly) so the two never fight over the same spot.
-  showSurvivalToast(text) {
+  showSurvivalToast(text, durationMs = 2600) {
     if (!this._survivalToast) {
       this._survivalToast = document.createElement('div')
       this._survivalToast.id = 'survival-toast'
@@ -348,7 +348,7 @@ export class Hud {
     this._survivalToast.textContent = text
     this._survivalToast.classList.remove('hidden')
     clearTimeout(this._survivalToastTimer)
-    this._survivalToastTimer = setTimeout(() => this._survivalToast.classList.add('hidden'), 2600)
+    this._survivalToastTimer = setTimeout(() => this._survivalToast.classList.add('hidden'), durationMs)
   }
 
   // A proactive, top-right, tap-to-join notification for a multiplayer room

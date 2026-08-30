@@ -85,14 +85,22 @@ export async function getMyUsername(session) {
 // separate so spending gear never costs you rank or level. `avatar` = the
 // player's chosen profile picture emoji.
 export async function fetchProfile(userId) {
-  if (!supabase || !userId) return { points: 0, wallet: 0, avatar: null }
+  if (!supabase || !userId) return { points: 0, wallet: 0, avatar: null, lastWeeklyReset: null }
   let { data, error } = await supabase
     .from('leaderboard')
-    .select('name, points, wallet, avatar')
+    .select('name, points, wallet, avatar, last_weekly_reset')
     .eq('id', userId)
     .maybeSingle()
   if (error) {
-    // Older table without `avatar` — retry without it.
+    // Older table without `last_weekly_reset` yet — retry without it.
+    ;({ data, error } = await supabase
+      .from('leaderboard')
+      .select('name, points, wallet, avatar')
+      .eq('id', userId)
+      .maybeSingle())
+  }
+  if (error) {
+    // Older table without `avatar` either — retry without it.
     ;({ data, error } = await supabase
       .from('leaderboard')
       .select('name, points, wallet')
@@ -107,8 +115,23 @@ export async function fetchProfile(userId) {
       .eq('id', userId)
       .maybeSingle())
   }
-  if (error || !data) return { points: 0, wallet: 0, avatar: null }
-  return { points: data.points ?? 0, wallet: data.wallet ?? data.points ?? 0, avatar: data.avatar ?? null }
+  if (error || !data) return { points: 0, wallet: 0, avatar: null, lastWeeklyReset: null }
+  return {
+    points: data.points ?? 0,
+    wallet: data.wallet ?? data.points ?? 0,
+    avatar: data.avatar ?? null,
+    lastWeeklyReset: data.last_weekly_reset ?? null,
+  }
+}
+
+// Stamps when this player's weekly fish-inventory reset last ran (see
+// main.js) so it doesn't fire again until the following Monday. Best-effort
+// — if the column doesn't exist yet (migration not run), this silently
+// no-ops and the reset just re-checks (and re-runs) every login until the
+// migration is applied.
+export async function updateLastWeeklyReset(userId, iso) {
+  if (!supabase || !userId) return
+  await supabase.from('leaderboard').update({ last_weekly_reset: iso }).eq('id', userId)
 }
 
 // Updates just the player's chosen profile picture (covered by the same
@@ -244,6 +267,25 @@ export async function fetchInventory(userId) {
   }
   if (error) return []
   return data
+}
+
+// Same rows as fetchInventory but each tagged with its own row id — needed
+// to delete specific rows (e.g. the weekly fish-only reset below) without
+// touching the store purchases/claim markers that share this same table.
+export async function fetchInventoryWithIds(userId) {
+  if (!supabase || !userId) return []
+  const { data, error } = await supabase.from('inventory').select('id, jenis').eq('user_id', userId)
+  if (error) return []
+  return data
+}
+
+// Deletes specific inventory rows by id (scoped to this user as
+// defense-in-depth alongside the RLS delete policy). Used by the weekly
+// fish-inventory reset event — see isStoreItemJenis in store.js for what
+// gets kept.
+export async function deleteInventoryRows(userId, ids) {
+  if (!supabase || !userId || !ids?.length) return
+  await supabase.from('inventory').delete().eq('user_id', userId).in('id', ids)
 }
 
 // All inventory rows (any player) created since `sinceIso` — used to

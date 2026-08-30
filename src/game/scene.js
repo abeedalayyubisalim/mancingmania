@@ -3,6 +3,17 @@ import * as THREE from 'three'
 // The rowboat hull's built-in color, absent any purchased skin.
 export const DEFAULT_BOAT_COLOR = 0xb5432c
 
+// How far above the water's own resting height (y=0) every walkable
+// shoreline surface (island sand/grass, dock/pier deck) sits. Water.heightAt
+// swings by about ±1.2 at its extremes (see game/water.js) — anything at or
+// below that used to occasionally get visibly "flooded" by a wave crest.
+// Lifting the land clear of the highest possible crest (with a margin) and
+// extending each landmass's underside down past the lowest trough keeps the
+// waterline looking like a beach at all times instead of lapping onto the
+// grass. player.js's ground-height model adds this same amount so the
+// camera keeps standing right at ground level, not sunk into it.
+export const SHORE_LIFT = 1.3
+
 function lowPolyTree(x, z) {
   const group = new THREE.Group()
   const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4423, flatShading: true })
@@ -41,8 +52,12 @@ function island(x, z, radius, opts = {}) {
   const { withTrees = true, avoidAngleRange = null } = opts
   const group = new THREE.Group()
   const sandMat = new THREE.MeshStandardMaterial({ color: 0xd8c27a, flatShading: true })
-  const sand = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius * 1.1, 1, 10), sandMat)
-  sand.position.y = -0.3
+  // Stretched tall (top pinned at the old y=0.2 surface, bottom extended
+  // deep down) so that after the whole group is lifted by SHORE_LIFT below,
+  // the beach top clears the highest wave crest and the base still
+  // disappears well beneath the lowest trough — see SHORE_LIFT above.
+  const sand = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius * 1.1, 3, 10), sandMat)
+  sand.position.y = -1.3
   sand.receiveShadow = true
   sand.castShadow = true
   group.add(sand)
@@ -67,7 +82,7 @@ function island(x, z, radius, opts = {}) {
     }
   }
 
-  group.position.set(x, 0, z)
+  group.position.set(x, SHORE_LIFT, z)
   return group
 }
 
@@ -254,9 +269,13 @@ function buildSurvivalIsland(center) {
   const grassMat = new THREE.MeshStandardMaterial({ color: 0x4a9d4f, flatShading: true })
   const hillMat = new THREE.MeshStandardMaterial({ color: 0x357a3a, flatShading: true })
 
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(24, 27, 1.4, 18), sandMat)
+  // Top pinned at the same y=0.2 every other feature here is built
+  // relative to; stretched deep underneath instead so that once the whole
+  // group is lifted by SHORE_LIFT below, the beach clears the highest wave
+  // crest and the base still vanishes below the lowest trough.
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(24, 27, 3, 18), sandMat)
   base.scale.set(1, 1, 1.4)
-  base.position.y = -0.5
+  base.position.y = -1.3
   base.receiveShadow = true
   group.add(base)
 
@@ -286,7 +305,8 @@ function buildSurvivalIsland(center) {
     group.add(lowPolyRock(Math.cos(a) * r, 16 + Math.sin(a) * 5, 0.4 + Math.random() * 0.5))
   }
 
-  group.position.set(center.x, 0, center.z)
+  // Lifted clear of the waterline — see SHORE_LIFT.
+  group.position.set(center.x, SHORE_LIFT, center.z)
   return group
 }
 
@@ -295,16 +315,23 @@ function buildDock() {
   const woodMat = new THREE.MeshStandardMaterial({ color: 0x8a5a34, flatShading: true, roughness: 0.9 })
   const postMat = new THREE.MeshStandardMaterial({ color: 0x5c3a1e, flatShading: true })
 
+  // The deck (platform + pier + planks) sits at the same lifted height as
+  // every other walkable surface (see SHORE_LIFT) so waves never wash over
+  // it; unlike island(), this group can't just be lifted wholesale since
+  // the support posts and tied-up boat below deliberately stay down at the
+  // water line — those are sized/positioned individually below instead.
+  const DECK_Y = SHORE_LIFT + 0.2
+
   // Main platform (where the player stands) + a long pier.
   const platform = new THREE.Mesh(new THREE.BoxGeometry(6, 0.4, 6), woodMat)
-  platform.position.set(0, 0.2, 6)
+  platform.position.set(0, DECK_Y, 6)
   platform.castShadow = true
   platform.receiveShadow = true
   group.add(platform)
 
   const pierLength = 16
   const pier = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.35, pierLength), woodMat)
-  pier.position.set(0, 0.2, 6 + 3 + pierLength / 2)
+  pier.position.set(0, DECK_Y, 6 + 3 + pierLength / 2)
   pier.castShadow = true
   pier.receiveShadow = true
   group.add(pier)
@@ -312,15 +339,16 @@ function buildDock() {
   // Plank grooves for a bit of visual texture.
   for (let i = -2; i <= pierLength / 2; i += 1.2) {
     const plankLine = new THREE.Mesh(new THREE.BoxGeometry(2.42, 0.02, 0.06), postMat)
-    plankLine.position.set(0, 0.39, 6 + 3 + i)
+    plankLine.position.set(0, DECK_Y + 0.19, 6 + 3 + i)
     group.add(plankLine)
   }
 
-  // Support posts under the pier.
+  // Support posts under the pier — stretched to still reach from the
+  // (now higher) pier underside down to well below the waterline.
   for (let i = -1; i <= pierLength - 2; i += 4) {
     for (const side of [-1, 1]) {
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 2.2, 6), postMat)
-      post.position.set(side * 1.1, -0.9, 6 + 3 + i)
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 2.2 + SHORE_LIFT, 6), postMat)
+      post.position.set(side * 1.1, -0.9 + SHORE_LIFT / 2, 6 + 3 + i)
       post.castShadow = true
       group.add(post)
     }
@@ -416,7 +444,57 @@ export const SURVIVAL_RIVER_POSITION = { x: SURVIVAL_ISLAND_CENTER.x + 3, z: SUR
 // Where a stranded player starts out — on the south beach, facing inland
 // toward the forest/river/mountain rather than straight out to open water.
 export const SURVIVAL_SPAWN_POSITION = { x: SURVIVAL_ISLAND_CENTER.x, z: SURVIVAL_ISLAND_CENTER.z + 20 }
+// The box the player is actually allowed to roam within during Survival
+// (see player.js's setMode) — this IS the walkable island footprint as far
+// as the game is concerned, so coast-detection below is defined relative to
+// this box's edges rather than a separately-eyeballed ellipse (the two used
+// to disagree, which made the spawn point read as "inland" and the far
+// mountain interior read as "coastal").
+export const SURVIVAL_ISLAND_BOUNDS = {
+  minX: SURVIVAL_ISLAND_CENTER.x - 26,
+  maxX: SURVIVAL_ISLAND_CENTER.x + 24,
+  minZ: SURVIVAL_ISLAND_CENTER.z - 34,
+  maxZ: SURVIVAL_ISLAND_CENTER.z + 26,
+}
 // Beyond this distance from the home island, the water counts as "open
 // sea" — better odds at rare fish, and a couple of species that only turn
 // up out there.
 export const OPEN_SEA_RADIUS = 55
+
+// Approximate ground elevation on the survival island's raised terrain
+// (foothill + mountain) — there's no real 3D collision anywhere in this
+// game (see player.js's *_BOUNDS boxes), so this is a height LOOKUP the
+// camera follows as you walk around, matching buildSurvivalIsland's actual
+// foothill/mountain footprints closely enough to feel like a real slope
+// instead of the camera staying flat while the ground visibly rises
+// beneath it. Returns height ABOVE the island's own flat ground (add
+// SHORE_LIFT for a world-space Y — see player.js).
+function radialBump(px, pz, cx, cz, innerR, outerR, height) {
+  const d = Math.hypot(px - cx, pz - cz)
+  if (d >= outerR) return 0
+  if (d <= innerR) return height
+  const t = 1 - (d - innerR) / (outerR - innerR)
+  return height * (t * t * (3 - 2 * t)) // smoothstep — a natural-feeling rise
+}
+
+export function getSurvivalGroundHeight(worldX, worldZ) {
+  const lx = worldX - SURVIVAL_ISLAND_CENTER.x
+  const lz = worldZ - SURVIVAL_ISLAND_CENTER.z
+  const foothill = radialBump(lx, lz, 1, -20, 8, 17, 2.1)
+  const mountain = radialBump(lx, lz, 0, -26, 3, 11, 9)
+  return Math.max(foothill, mountain)
+}
+
+// True once you're close enough to the walkable island's edge (within
+// COAST_MARGIN of the SURVIVAL_ISLAND_BOUNDS box) to cast a line into the
+// open sea — measured as distance to the nearest bounds edge rather than an
+// ellipse, since SURVIVAL_ISLAND_BOUNDS box IS the walkable area the player
+// actually moves within (see player.js). Used together with the river/lake
+// proximity checks (main.js) to gate fishing/casting to "actually near
+// water" during Survival.
+const COAST_MARGIN = 6
+export function isNearSurvivalCoast(worldX, worldZ) {
+  const b = SURVIVAL_ISLAND_BOUNDS
+  const distToEdge = Math.min(worldX - b.minX, b.maxX - worldX, worldZ - b.minZ, b.maxZ - worldZ)
+  return distToEdge <= COAST_MARGIN
+}

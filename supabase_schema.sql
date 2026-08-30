@@ -28,6 +28,13 @@ alter table public.leaderboard add column if not exists avatar text;
 -- no-op once every wallet has been touched by real gameplay.
 update public.leaderboard set wallet = points where wallet = 0 and points > 0;
 
+-- Already have the table? Run this line too — it tracks when this player's
+-- fish-catch inventory was last cleared by the weekly reset event (every
+-- Monday, checked client-side at login — see main.js) so the same player
+-- doesn't get reset twice in the same week. Store purchases (gear/cosmetics)
+-- are never touched by that event. Safe to run even if it already exists.
+alter table public.leaderboard add column if not exists last_weekly_reset timestamptz;
+
 alter table public.leaderboard enable row level security;
 
 -- Anyone (including anonymous visitors) can read the leaderboard — also
@@ -86,6 +93,15 @@ drop policy if exists "Players can add to their own inventory" on public.invento
 create policy "Players can add to their own inventory"
   on public.inventory for insert
   with check (auth.uid()::text = user_id);
+
+-- A player can only delete rows from their own inventory — needed for the
+-- weekly fish-inventory reset event (main.js), which deletes fish-catch
+-- rows but leaves store purchases and claim markers (achievements/daily
+-- reward) alone.
+drop policy if exists "Players can delete their own inventory" on public.inventory;
+create policy "Players can delete their own inventory"
+  on public.inventory for delete
+  using (auth.uid()::text = user_id);
 
 -- ---------------------------------------------------------------------------
 -- `friends` — a player's personal follow list (used for the Teman menu and

@@ -139,9 +139,15 @@ function load() {
       // a per-device display preference, not synced to Supabase, same as
       // e.g. look sensitivity. Defaults to null (the game's default look).
       equipped: parsed.equipped ?? { rod: null, boat: null },
+      // Which account this cache actually belongs to (a logged-in user's
+      // id, or the string 'guest') — see syncStoreOwner below. Older saves
+      // from before this field existed have no owner recorded; treated as
+      // unknown so the very next syncStoreOwner call stamps it rather than
+      // wiping a real player's cache for no reason.
+      ownerId: parsed.ownerId ?? null,
     }
   } catch {
-    return { owned: [], tiers: {}, equipped: { rod: null, boat: null } }
+    return { owned: [], tiers: {}, equipped: { rod: null, boat: null }, ownerId: null }
   }
 }
 
@@ -153,6 +159,32 @@ function save() {
   } catch {
     // Storage unavailable — purchases just won't persist this session.
   }
+}
+
+// ---- Owner reconciliation ----------------------------------------------
+// STORAGE_KEY is one shared localStorage slot per BROWSER, not per account
+// — that's fine while the same person keeps logging into the same account
+// on it, but it silently broke a real case: log in as account A, buy gear,
+// delete account A, sign up a brand-new account B on the same browser —
+// B's Supabase inventory is correctly empty, but this browser's local
+// cache still had A's owned items/tiers/equipped skins sitting in it, and
+// applySyncedInventory only ever ADDS ownership, never removes it — so B
+// showed up owning everything A did, with nothing left to buy.
+//
+// Call this once right after auth resolves (main.js), before
+// applySyncedInventory. If the account now signing in doesn't match whoever
+// this cache last belonged to, the stale owned/tiers/equipped data is
+// wiped first — logged-in players immediately get it rebuilt for real from
+// their own Supabase inventory right after; guests just start clean.
+export function syncStoreOwner(userId) {
+  const ownerId = userId || 'guest'
+  if (state.ownerId !== null && state.ownerId !== ownerId) {
+    state.owned = []
+    state.tiers = {}
+    state.equipped = { rod: null, boat: null }
+  }
+  state.ownerId = ownerId
+  save()
 }
 
 // ---- Cosmetics ------------------------------------------------------------
@@ -192,7 +224,7 @@ export function equipSkin(itemId) {
 // if nothing's equipped (or the equipped item somehow isn't owned/found).
 export function getSkinColor(category, fallback) {
   const id = getEquippedSkin(category)
-  const item = id && COSMETIC_ITEMS.find((i) => i.id === id)
+  const item = id && isOwned(id) && COSMETIC_ITEMS.find((i) => i.id === id)
   return item ? item.color : fallback
 }
 
@@ -281,6 +313,14 @@ export function applySyncedInventory(rows) {
   for (const [category, itemId] of Object.entries(lastSkinByCategory)) {
     if (!getEquippedSkin(category)) equipSkin(itemId)
   }
+}
+
+// True if this inventory row's jenis is a store purchase (a cosmetic id or
+// a gear tier id) rather than a fish catch or a claim marker (achievement/
+// daily reward). Used by the weekly fish-inventory reset event (main.js) to
+// know what to keep — "hapus semua ikan kecuali item toko".
+export function isStoreItemJenis(jenis) {
+  return COSMETIC_ITEMS.some((i) => i.id === jenis) || Boolean(parseGearJenis(jenis))
 }
 
 // Splits arbitrary inventory rows (any player's) into { cosmetics, gearTiers }

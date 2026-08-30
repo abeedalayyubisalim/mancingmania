@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js'
 import { settings } from '../settings.js'
 import { getSkinColor } from '../store.js'
-import { SURVIVAL_ISLAND_CENTER } from './scene.js'
+import { SURVIVAL_ISLAND_CENTER, SURVIVAL_ISLAND_BOUNDS, SHORE_LIFT, getSurvivalGroundHeight } from './scene.js'
 
 // Bounds the player is allowed to walk within (the dock platform + pier).
 const DOCK_BOUNDS = { minX: -2.6, maxX: 2.6, minZ: 2, maxZ: 24.5 }
@@ -10,15 +10,17 @@ const DOCK_BOUNDS = { minX: -2.6, maxX: 2.6, minZ: 2, maxZ: 24.5 }
 const BOAT_BOUNDS = { minX: -185, maxX: 185, minZ: -185, maxZ: 185 }
 // Survival mode roams the whole (much bigger, Sub-tahap Survival-B) survival
 // island — forest, mountain, river and lake all included — so every biome
-// piece built in game/scene.js's buildSurvivalIsland() stays reachable.
-const ISLAND_BOUNDS = {
-  minX: SURVIVAL_ISLAND_CENTER.x - 26,
-  maxX: SURVIVAL_ISLAND_CENTER.x + 24,
-  minZ: SURVIVAL_ISLAND_CENTER.z - 34,
-  maxZ: SURVIVAL_ISLAND_CENTER.z + 26,
-}
+// piece built in game/scene.js's buildSurvivalIsland() stays reachable. This
+// box is the single source of truth for the walkable footprint — scene.js's
+// isNearSurvivalCoast() is defined relative to the same box.
+const ISLAND_BOUNDS = SURVIVAL_ISLAND_BOUNDS
 const EYE_HEIGHT = 1.7
 const BOAT_EYE_HEIGHT = 1.5
+// Vertical hop (spacebar) — off the boat only. No real air control, just a
+// snappy up-then-down arc back to whatever the ground height is under you
+// when you land (see getGroundHeight below).
+const GRAVITY = 18
+const JUMP_SPEED = 6.5
 // The rod shaft's built-in color, absent any purchased skin.
 export const DEFAULT_ROD_COLOR = 0x3b2a1a
 const _euler = new THREE.Euler(0, 0, 0, 'YXZ')
@@ -29,7 +31,7 @@ export class Player {
     this.controls = new PointerLockControls(camera, domElement)
     this.controls.pointerSpeed = settings.lookSensitivity
 
-    this.camera.position.set(0, EYE_HEIGHT, 5)
+    this.camera.position.set(0, SHORE_LIFT + EYE_HEIGHT, 5)
     this.mode = 'dock' // 'dock' | 'boat'
     this.bounds = DOCK_BOUNDS
 
@@ -40,6 +42,9 @@ export class Player {
     // Set while a text input (chat, etc.) has focus, so typing "wasd" in a
     // message doesn't also walk the character around the dock.
     this.inputLocked = false
+    // Jump/gravity state (off the boat only) — see GRAVITY/JUMP_SPEED.
+    this._vy = 0
+    this._grounded = true
 
     this._onKeyDown = (e) => this.setKey(e.code, true)
     this._onKeyUp = (e) => this.setKey(e.code, false)
@@ -73,7 +78,27 @@ export class Player {
       case 'ArrowRight':
         this.move.right = down
         break
+      case 'Space':
+        if (down) this.jump()
+        break
     }
+  }
+
+  // Off the boat only — a simple upward velocity impulse, gravity (applied
+  // in update()) brings it back down onto whatever the ground height is at
+  // the landing spot. Ignored mid-air so you can't double-jump.
+  jump() {
+    if (this.mode === 'boat' || !this._grounded) return
+    this._vy = JUMP_SPEED
+    this._grounded = false
+  }
+
+  // Ground elevation (world Y) directly beneath a given x/z, off the boat.
+  // Flat SHORE_LIFT everywhere except the survival island, where
+  // getSurvivalGroundHeight adds the foothill/mountain slope on top.
+  _groundHeightAt(x, z) {
+    const bump = this.mode === 'island' ? getSurvivalGroundHeight(x, z) : 0
+    return SHORE_LIFT + bump
   }
 
   _buildViewmodel() {
@@ -128,6 +153,13 @@ export class Player {
     if (position) {
       this.camera.position.x = position.x
       this.camera.position.z = position.z
+      // Snap straight to the new spot's ground height instead of letting
+      // next frame's gravity fall/rise into it — without this a teleport
+      // from high ground (e.g. leaving Survival near the mountain) back to
+      // flat ground plays out as a brief unwanted free-fall.
+      if (mode !== 'boat') this.camera.position.y = this._groundHeightAt(position.x, position.z) + EYE_HEIGHT
+      this._vy = 0
+      this._grounded = true
     }
   }
 
@@ -195,12 +227,31 @@ export class Player {
     if (this.mode === 'boat' && water) {
       // Ride the waves instead of the little idle walk-bob.
       pos.y = water.heightAt(pos.x, pos.z, elapsed) + BOAT_EYE_HEIGHT
+      this._vy = 0
+      this._grounded = true
     } else {
       // Subtle walk bob.
       const moving = wish.lengthSq() > 0
       this._bobT = (this._bobT ?? 0) + (moving ? dt * 8 : dt * 2)
       const bob = moving ? Math.sin(this._bobT) * 0.03 : Math.sin(this._bobT) * 0.01
-      pos.y = EYE_HEIGHT + bob * bobAmount
+      const standingY = this._groundHeightAt(pos.x, pos.z) + EYE_HEIGHT + bob * bobAmount
+
+      // Gravity/jump. While grounded, pos.y just hugs the terrain exactly
+      // (so walking up OR down a slope — e.g. the survival island's
+      // foothill/mountain — tracks it smoothly with zero lag); jump() sets
+      // _grounded false and this free-falls/arcs until it reaches the
+      // ground height under wherever the player ends up, then re-grounds.
+      if (this._grounded) {
+        pos.y = standingY
+      } else {
+        this._vy -= GRAVITY * dt
+        pos.y += this._vy * dt
+        if (pos.y <= standingY) {
+          pos.y = standingY
+          this._vy = 0
+          this._grounded = true
+        }
+      }
     }
   }
 
