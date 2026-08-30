@@ -27,6 +27,8 @@ import {
   setGearTier,
   gearJenisId,
   summarizeGearRows,
+  getEquippedSkin,
+  equipSkin,
 } from './store.js'
 import { getLevelInfo } from './leveling.js'
 import { DEFAULT_AVATAR, AVATAR_OPTIONS } from './avatar.js'
@@ -474,24 +476,30 @@ export class PauseMenu {
       `
     }).join('')
 
-    // One-off cosmetic items.
+    // One-off cosmetic items (accessories + rod/boat skins).
     const cosmeticCards = COSMETIC_ITEMS.map((item) => {
       const owned = isOwned(item.id)
+      const equipped = item.skin && getEquippedSkin(item.skin) === item.id
       const minLevel = item.minLevel ?? 1
       const levelOk = level >= minLevel
       const affordable = balance >= item.price
+      let statusHtml
+      if (owned && item.skin && !equipped) {
+        statusHtml = `<button class="store-equip-btn" data-equip="${item.id}">Pakai</button>`
+      } else if (owned) {
+        statusHtml = `<div class="store-card-owned">${equipped ? '✅ Dipakai' : '✅ Dimiliki'}</div>`
+      } else if (levelOk) {
+        statusHtml = `<button class="store-buy-btn" data-item="${item.id}" ${affordable ? '' : 'disabled'}>Beli — 🪙 ${item.price}</button>`
+      } else {
+        statusHtml = `<div class="store-card-locked">🔒 Perlu Level ${minLevel}</div>`
+      }
       return `
         <div class="store-card ${owned ? 'owned' : ''} ${!levelOk ? 'locked' : ''}">
+          ${item.skin ? `<div class="store-card-swatch" style="background:#${item.color.toString(16).padStart(6, '0')}"></div>` : ''}
           <div class="store-card-icon">${item.emoji}</div>
           <div class="store-card-name">${escapeHtml(item.name)}</div>
           <div class="store-card-desc">${escapeHtml(item.desc)}</div>
-          ${
-            owned
-              ? '<div class="store-card-owned">✅ Dimiliki</div>'
-              : levelOk
-                ? `<button class="store-buy-btn" data-item="${item.id}" ${affordable ? '' : 'disabled'}>Beli — 🪙 ${item.price}</button>`
-                : `<div class="store-card-locked">🔒 Perlu Level ${minLevel}</div>`
-          }
+          ${statusHtml}
         </div>
       `
     }).join('')
@@ -503,6 +511,13 @@ export class PauseMenu {
     })
     grid.querySelectorAll('.store-buy-btn[data-item]').forEach((btn) => {
       btn.addEventListener('click', () => this._buyCosmetic(btn.dataset.item))
+    })
+    grid.querySelectorAll('.store-equip-btn[data-equip]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        equipSkin(btn.dataset.equip)
+        this.onStoreChange?.()
+        this._renderStore()
+      })
     })
   }
 
@@ -530,6 +545,7 @@ export class PauseMenu {
     if (level < (item.minLevel ?? 1)) return
     if (!this.spendScore(item.price)) return
     markOwned(itemId)
+    if (item.skin) equipSkin(itemId) // a freshly-bought skin is worn right away
     if (this.userId) addInventoryItem(this.userId, itemId).catch(() => {})
     playPurchase()
     this.onStoreChange?.()
@@ -622,17 +638,23 @@ export class PauseMenu {
         .filter(Boolean)
         .map((i) => ({
           key: `cosmetic:${i.id}`,
+          id: i.id,
           kind: 'cosmetic',
           emoji: i.emoji,
           name: i.name,
           desc: i.desc,
           tierLabel: null,
           price: i.price,
+          skin: i.skin ?? null,
         })),
     ]
+    this._profileIsSelf = isSelf
     const gearHtml = this.profileGearItems.length
       ? this.profileGearItems
-          .map((i) => `<button class="profile-mini-item" data-gearkey="${i.key}" title="${escapeHtml(i.name)}">${i.emoji}</button>`)
+          .map(
+            (i) =>
+              `<button class="profile-mini-item ${i.skin && getEquippedSkin(i.skin) === i.id ? 'equipped' : ''}" data-gearkey="${i.key}" title="${escapeHtml(i.name)}">${i.emoji}</button>`
+          )
           .join('')
       : '<p class="gallery-status">Belum ada item toko.</p>'
 
@@ -704,6 +726,8 @@ export class PauseMenu {
 
   _showItemDetail(item) {
     this._showView('item-detail')
+    const isEquipped = item.skin && getEquippedSkin(item.skin) === item.id
+    const canEquip = item.skin && this._profileIsSelf && !isEquipped
     this.el.querySelector('#item-detail-body').innerHTML = `
       <div class="detail-icon"><span class="detail-emoji">${item.emoji}</span></div>
       <h3>${escapeHtml(item.name)}</h3>
@@ -712,10 +736,20 @@ export class PauseMenu {
         <div class="detail-row"><span>📋 Deskripsi</span><p>${escapeHtml(item.desc || '—')}</p></div>
       </div>
       <div class="detail-footer">
-        <span>${item.kind === 'gear' ? '🛠️ Perlengkapan' : '✨ Kosmetik'}</span>
+        <span>${item.kind === 'gear' ? '🛠️ Perlengkapan' : item.skin ? '🎨 Skin' : '✨ Kosmetik'}</span>
         ${item.price != null ? `<span>🪙 ${item.price} poin</span>` : ''}
       </div>
+      ${isEquipped ? '<div class="item-detail-equipped">✅ Sedang dipakai</div>' : ''}
+      ${canEquip ? `<button id="item-detail-equip-btn" class="pause-btn">Pakai Skin Ini</button>` : ''}
     `
+    const equipBtn = this.el.querySelector('#item-detail-equip-btn')
+    if (equipBtn) {
+      equipBtn.addEventListener('click', () => {
+        equipSkin(item.id)
+        this.onStoreChange?.()
+        this._showItemDetail(item)
+      })
+    }
   }
 
   _showAvatarPicker() {

@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js'
 import { settings } from '../settings.js'
+import { getSkinColor } from '../store.js'
 
 // Bounds the player is allowed to walk within (the dock platform + pier).
 const DOCK_BOUNDS = { minX: -2.6, maxX: 2.6, minZ: 2, maxZ: 24.5 }
@@ -8,6 +9,8 @@ const DOCK_BOUNDS = { minX: -2.6, maxX: 2.6, minZ: 2, maxZ: 24.5 }
 const BOAT_BOUNDS = { minX: -185, maxX: 185, minZ: -185, maxZ: 185 }
 const EYE_HEIGHT = 1.7
 const BOAT_EYE_HEIGHT = 1.5
+// The rod shaft's built-in color, absent any purchased skin.
+export const DEFAULT_ROD_COLOR = 0x3b2a1a
 const _euler = new THREE.Euler(0, 0, 0, 'YXZ')
 
 export class Player {
@@ -59,7 +62,11 @@ export class Player {
     this.rig = new THREE.Group()
     this.camera.add(this.rig)
 
-    const rodMat = new THREE.MeshStandardMaterial({ color: 0x3b2a1a, flatShading: true })
+    const rodMat = new THREE.MeshStandardMaterial({
+      color: getSkinColor('rod', DEFAULT_ROD_COLOR),
+      flatShading: true,
+    })
+    this.rodMat = rodMat
     const handMat = new THREE.MeshStandardMaterial({ color: 0xe0ac7a, flatShading: true })
     const reelMat = new THREE.MeshStandardMaterial({ color: 0x999999, flatShading: true, metalness: 0.6, roughness: 0.4 })
 
@@ -101,6 +108,13 @@ export class Player {
       this.camera.position.x = position.x
       this.camera.position.z = position.z
     }
+  }
+
+  // Re-applies whichever rod skin is currently equipped (or the default
+  // color) — call after a store purchase/equip so the change shows up
+  // immediately without rebuilding the whole viewmodel.
+  applyRodSkin() {
+    this.rodMat.color.setHex(getSkinColor('rod', DEFAULT_ROD_COLOR))
   }
 
   // World-space position of the rod tip, for spawning the fishing line/bobber.

@@ -1,5 +1,8 @@
 import * as THREE from 'three'
 
+// The rowboat hull's built-in color, absent any purchased skin.
+export const DEFAULT_BOAT_COLOR = 0xb5432c
+
 function lowPolyTree(x, z) {
   const group = new THREE.Group()
   const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4423, flatShading: true })
@@ -106,7 +109,7 @@ function buildDock() {
 
   // A simple low-poly rowboat tied at the end of the pier for atmosphere.
   const boat = new THREE.Group()
-  const hullMat = new THREE.MeshStandardMaterial({ color: 0xb5432c, flatShading: true })
+  const hullMat = new THREE.MeshStandardMaterial({ color: DEFAULT_BOAT_COLOR, flatShading: true })
   const hull = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.5, 0.5, 6, 1, false), hullMat)
   hull.rotation.z = Math.PI / 2
   hull.scale.set(1, 1, 1.8)
@@ -116,7 +119,7 @@ function buildDock() {
   boat.rotation.y = 0.3
   group.add(boat)
 
-  return group
+  return { group, hullMat }
 }
 
 export function buildEnvironment(scene) {
@@ -144,7 +147,7 @@ export function buildEnvironment(scene) {
   const ambient = new THREE.AmbientLight(0xffffff, 0.55)
   scene.add(ambient)
 
-  const dock = buildDock()
+  const { group: dock, hullMat: boatHullMat } = buildDock()
   scene.add(dock)
 
   // Home island the dock is attached to. Trees are kept away from the
@@ -165,8 +168,9 @@ export function buildEnvironment(scene) {
   }
   scene.add(decor)
 
-  // Handed back so the day/night cycle can drive these over time.
-  return { dock, sun, hemi, ambient }
+  // Handed back so the day/night cycle can drive these over time, and so
+  // the boat skin store item can recolor the hull.
+  return { dock, sun, hemi, ambient, boatHullMat }
 }
 
 // World-space spot the little rowboat is tied at (see buildDock above) and

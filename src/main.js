@@ -2,7 +2,13 @@ import * as THREE from 'three'
 import './style.css'
 import { showAuthGate } from './auth-ui.js'
 import { Hud } from './hud.js'
-import { buildEnvironment, BOAT_DOCK_POSITION, PIER_RETURN_POSITION, OPEN_SEA_RADIUS } from './game/scene.js'
+import {
+  buildEnvironment,
+  BOAT_DOCK_POSITION,
+  PIER_RETURN_POSITION,
+  OPEN_SEA_RADIUS,
+  DEFAULT_BOAT_COLOR,
+} from './game/scene.js'
 import { Water } from './game/water.js'
 import { Player } from './game/player.js'
 import { Fishing } from './game/fishing.js'
@@ -12,7 +18,7 @@ import { PauseMenu } from './pause-menu.js'
 import { TouchControls } from './touch-controls.js'
 import { isTouchDevice } from './settings.js'
 import { recordCatch, allEntries as allCollectionEntries, groupInventoryRows } from './collection.js'
-import { getCosmeticBadge, applySyncedInventory, getGearTier, getOwned, GEAR_LINES } from './store.js'
+import { getCosmeticBadge, applySyncedInventory, getGearTier, getOwned, GEAR_LINES, getSkinColor } from './store.js'
 import { getLevelInfo } from './leveling.js'
 import { loadLocalWallet, saveLocalWallet } from './wallet-storage.js'
 import { DEFAULT_AVATAR, loadLocalAvatar, saveLocalAvatar } from './avatar.js'
@@ -188,7 +194,7 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
   const scene = new THREE.Scene()
   const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 500)
 
-  const { sun, hemi, ambient } = buildEnvironment(scene)
+  const { sun, hemi, ambient, boatHullMat } = buildEnvironment(scene)
   const water = new Water()
   scene.add(water.mesh)
 
@@ -196,6 +202,15 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
   // The camera must live in the scene graph for objects parented to it
   // (the viewmodel rod) to be rendered.
   scene.add(camera)
+
+  // Applies whichever rod/boat skins are currently equipped — called once
+  // at startup and again after every store purchase/equip so a change
+  // shows up immediately in the 3D world.
+  function applyEquippedSkins() {
+    player.applyRodSkin()
+    boatHullMat.color.setHex(getSkinColor('boat', DEFAULT_BOAT_COLOR))
+  }
+  applyEquippedSkins()
 
   const dayNight = new DayNightCycle({ scene, sun, hemi, ambient, camera })
 
@@ -279,17 +294,14 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
         persistPoints()
       }
       checkAchievements()
-      // The share button on the catch popup is unusable while the mouse
-      // is pointer-locked (cursor hidden/captured, and the global
-      // mousedown listener in fishing.js would treat the click as a new
-      // cast). Release the lock so the popup is actually clickable; the
-      // `unlock` handler below is told to not treat this as "player
-      // opened the pause menu" via suppressUnlockPause. The player can
-      // re-lock (and resume) just by clicking the canvas again.
-      if (!touch && document.pointerLockElement === renderer.domElement) {
-        suppressUnlockPause = true
-        document.exitPointerLock()
-      }
+      // NOTE: this used to force-exit pointer lock here so the (now
+      // disabled) share button on the catch popup would be clickable. With
+      // sharing off there's nothing on the popup to click, and releasing
+      // the lock was actually a bug on desktop: the player would land back
+      // in "free cursor" mode with no obvious way back in (clicking the
+      // canvas to re-lock could also get eaten as a stray cast attempt),
+      // making it look like fishing was broken. Just leave the lock alone
+      // now — the catch popup is purely a toast, no interaction needed.
       hud.showCatch(fish)
     },
     onMiss: () => {},
@@ -297,7 +309,6 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
 
   // ---- Pause menu (Escape on desktop, ☰ button always) ----------------
   let paused = true
-  let suppressUnlockPause = false
   const menuRoot = document.querySelector('#menu-root')
   const pauseMenu = new PauseMenu(menuRoot, {
     username,
@@ -317,6 +328,7 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
     },
     onStoreChange: () => {
       hud.setBadge(getCosmeticBadge())
+      applyEquippedSkins()
       checkAchievements()
     },
     onAvatarChange: (newAvatar) => {
@@ -350,10 +362,6 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
       pauseMenu.close()
     })
     player.controls.addEventListener('unlock', () => {
-      if (suppressUnlockPause) {
-        suppressUnlockPause = false
-        return
-      }
       if (!paused) openPause()
     })
   }

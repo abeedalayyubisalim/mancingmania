@@ -9,6 +9,23 @@ export function fishIconSVG(fish, sizePx = 56) {
       <rect x="14" y="20" width="24" height="6" fill="rgba(255,255,255,.15)"/>
     </svg>`
   }
+  if (fish.id === 'gurita') {
+    const tentacles = [-18, -11, -4, 4, 11, 18]
+      .map((dx, i) => {
+        const x = 32 + dx
+        const sway = i % 2 === 0 ? 6 : -6
+        return `<path d="M${x} 34 Q${x + sway} 46 ${x} 58" fill="none" stroke="${hex}" stroke-width="5" stroke-linecap="round"/>`
+      })
+      .join('')
+    return `<svg width="${sizePx}" height="${sizePx}" viewBox="0 0 64 64" aria-hidden="true">
+      ${tentacles}
+      <ellipse cx="32" cy="26" rx="20" ry="17" fill="${hex}"/>
+      <circle cx="24" cy="22" r="3" fill="rgba(0,0,0,.6)"/>
+      <circle cx="40" cy="22" r="3" fill="rgba(0,0,0,.6)"/>
+      <circle cx="25" cy="21" r="1" fill="#fff"/>
+      <circle cx="41" cy="21" r="1" fill="#fff"/>
+    </svg>`
+  }
   return `<svg width="${sizePx}" height="${sizePx}" viewBox="0 0 64 64" aria-hidden="true">
     <polygon points="6,32 18,24 18,40" fill="${hex}" opacity="0.9"/>
     <ellipse cx="38" cy="32" rx="22" ry="14" fill="${hex}"/>
