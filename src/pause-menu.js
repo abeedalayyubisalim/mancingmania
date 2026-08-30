@@ -3,11 +3,15 @@ import { signOut, fetchLeaderboard, fetchInventory } from './supabase-client.js'
 import { FISH_TYPES } from './game/fish-data.js'
 import { fishIconSVG } from './fish-icon.js'
 import { getEntry, totalCaughtSpecies, groupInventoryRows } from './collection.js'
+import { STORE_ITEMS, isOwned, markOwned } from './store.js'
 
 export class PauseMenu {
-  constructor(root, { username, userId, onResume, onSensitivityChange }) {
+  constructor(root, { username, userId, onResume, onSensitivityChange, getScore, spendScore, onStoreChange }) {
     this.onResume = onResume
     this.username = username
+    this.getScore = getScore ?? (() => 0)
+    this.spendScore = spendScore ?? (() => false)
+    this.onStoreChange = onStoreChange
     // Signed-in players get their collection from Supabase (synced across
     // devices); guests fall back to the local browser copy.
     this.userId = userId ?? null
@@ -27,6 +31,7 @@ export class PauseMenu {
           }</p>
           <button id="pause-resume" class="pause-btn primary">▶ Main</button>
           <button id="pause-gallery" class="pause-btn">🐟 Koleksi Ikan</button>
+          <button id="pause-store" class="pause-btn">🛒 Toko</button>
           <button id="pause-leaderboard" class="pause-btn">🏆 Papan Skor</button>
           <button id="pause-settings" class="pause-btn">⚙️ Pengaturan</button>
           <button id="pause-logout" class="pause-btn danger">🚪 Keluar</button>
@@ -34,6 +39,11 @@ export class PauseMenu {
         <div id="pause-view-leaderboard" class="pause-view hidden">
           <h3>Papan Skor Teratas</h3>
           <ol id="pause-leaderboard-list"></ol>
+          <button class="pause-btn back-btn" data-back="main">← Kembali</button>
+        </div>
+        <div id="pause-view-store" class="pause-view hidden">
+          <h3>Toko <span id="store-balance"></span></h3>
+          <div id="store-grid"></div>
           <button class="pause-btn back-btn" data-back="main">← Kembali</button>
         </div>
         <div id="pause-view-settings" class="pause-view hidden">
@@ -61,12 +71,14 @@ export class PauseMenu {
       settings: this.el.querySelector('#pause-view-settings'),
       gallery: this.el.querySelector('#pause-view-gallery'),
       'gallery-detail': this.el.querySelector('#pause-view-gallery-detail'),
+      store: this.el.querySelector('#pause-view-store'),
     }
 
     this.el.querySelector('#pause-resume').addEventListener('click', () => this.onResume?.())
     this.el.querySelector('#pause-leaderboard').addEventListener('click', () => this._showLeaderboard())
     this.el.querySelector('#pause-settings').addEventListener('click', () => this._showView('settings'))
     this.el.querySelector('#pause-gallery').addEventListener('click', () => this._showGallery())
+    this.el.querySelector('#pause-store').addEventListener('click', () => this._showStore())
     this.el.querySelector('#pause-logout').addEventListener('click', () => this._logout())
     this.el.querySelectorAll('[data-back]').forEach((btn) =>
       btn.addEventListener('click', () => this._showView(btn.dataset.back))
@@ -140,6 +152,7 @@ export class PauseMenu {
     this._showView('gallery-detail')
 
     const first = new Date(entry.firstCaughtAt)
+    const heaviest = entry.maxWeight ? `${entry.maxWeight.toFixed(2)} kg` : '—'
     this.el.querySelector('#gallery-detail-body').innerHTML = `
       <div class="detail-icon">${fishIconSVG(fish, 84)}</div>
       <h3>${escapeHtml(fish.name)}</h3>
@@ -149,12 +162,53 @@ export class PauseMenu {
         <div class="detail-row"><span>📏 Ukuran</span><p>${escapeHtml(fish.sizeInfo)}</p></div>
         <div class="detail-row"><span>⏳ Umur</span><p>${escapeHtml(fish.lifespan)}</p></div>
         <div class="detail-row"><span>💡 Fakta</span><p>${escapeHtml(fish.fact)}</p></div>
+        <div class="detail-row"><span>🏋️ Tangkapan Terberat</span><p>${heaviest}</p></div>
       </div>
       <div class="detail-footer">
-        <span>${fish.junk ? 'Bukan tangkapan bernilai' : `${fish.points} poin`}</span>
+        <span>${fish.junk ? 'Bukan tangkapan bernilai' : `~${fish.pointsPerKg} poin/kg`}</span>
         <span>Ditangkap ${entry.count}x · pertama ${first.toLocaleDateString('id-ID')}</span>
       </div>
     `
+  }
+
+  _showStore() {
+    this._showView('store')
+    this._renderStore()
+  }
+
+  _renderStore() {
+    const balance = this.getScore()
+    this.el.querySelector('#store-balance').textContent = `🪙 ${balance}`
+    const grid = this.el.querySelector('#store-grid')
+    grid.innerHTML = STORE_ITEMS.map((item) => {
+      const owned = isOwned(item.id)
+      const affordable = balance >= item.price
+      return `
+        <div class="store-card ${owned ? 'owned' : ''}">
+          <div class="store-card-icon">${item.emoji}</div>
+          <div class="store-card-name">${escapeHtml(item.name)}</div>
+          <div class="store-card-desc">${escapeHtml(item.desc)}</div>
+          ${
+            owned
+              ? '<div class="store-card-owned">✅ Dimiliki</div>'
+              : `<button class="store-buy-btn" data-item="${item.id}" ${affordable ? '' : 'disabled'}>Beli — 🪙 ${item.price}</button>`
+          }
+        </div>
+      `
+    }).join('')
+
+    grid.querySelectorAll('.store-buy-btn').forEach((btn) => {
+      btn.addEventListener('click', () => this._buyItem(btn.dataset.item))
+    })
+  }
+
+  _buyItem(itemId) {
+    const item = STORE_ITEMS.find((i) => i.id === itemId)
+    if (!item || isOwned(itemId)) return
+    if (!this.spendScore(item.price)) return
+    markOwned(itemId)
+    this.onStoreChange?.()
+    this._renderStore()
   }
 
   async _logout() {

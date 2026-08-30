@@ -1,5 +1,6 @@
 import * as THREE from 'three'
-import { rollFish } from './fish-data.js'
+import { rollFish, rollWeight, pointsForWeight } from './fish-data.js'
+import { getRareBonus, getLegendaryBonus, getBiteSpeedBonus } from '../store.js'
 
 const STATE = {
   IDLE: 'idle',
@@ -124,7 +125,8 @@ export class Fishing {
 
   _startWaiting() {
     this.state = STATE.WAITING
-    this._waitTimer = 1.6 + Math.random() * 2.8 - this.power * 0.4
+    const base = 1.6 + Math.random() * 2.8 - this.power * 0.4
+    this._waitTimer = Math.max(0.4, base * (1 - getBiteSpeedBonus()))
     this._setStatus('Menunggu ikan menggigit...')
   }
 
@@ -135,7 +137,9 @@ export class Fishing {
   }
 
   _hookFish() {
-    this.currentFish = rollFish(this.power)
+    const base = rollFish(this.power, getRareBonus(), getLegendaryBonus())
+    const weight = rollWeight(base)
+    this.currentFish = { ...base, weight, points: pointsForWeight(base, weight) }
     this.state = STATE.REELING
     this.reelProgress = 0.18
     this._reelTimer = 0
@@ -160,7 +164,9 @@ export class Fishing {
     this.currentFish = null
     this.onCatch?.(fish)
     this._setStatus(
-      fish.junk ? `Cuma dapat ${fish.name}...` : `Dapat ${fish.name}! +${fish.points} poin`,
+      fish.junk
+        ? `Cuma dapat ${fish.name}...`
+        : `Dapat ${fish.name} (${fish.weight.toFixed(2)} kg)! +${fish.points} poin`,
       { reset: true }
     )
   }

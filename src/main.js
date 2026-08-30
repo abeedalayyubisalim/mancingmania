@@ -11,6 +11,7 @@ import { PauseMenu } from './pause-menu.js'
 import { TouchControls } from './touch-controls.js'
 import { isTouchDevice } from './settings.js'
 import { recordCatch } from './collection.js'
+import { getCosmeticBadge } from './store.js'
 
 const app = document.querySelector('#app')
 
@@ -34,6 +35,7 @@ function startGame({ session, username, guest }) {
   const canvas = document.querySelector('#game-canvas')
   const hud = new Hud(document.querySelector('#hud-root'))
   hud.setUsername(username + (guest ? ' (Tamu)' : ''))
+  hud.setBadge(getCosmeticBadge())
   hud.setScore(score)
   hud.onOpenLeaderboard = async () => {
     const rows = await fetchLeaderboard(10)
@@ -65,9 +67,9 @@ function startGame({ session, username, guest }) {
     domElement: renderer.domElement,
     onStatus: (text, opts) => hud.setStatus(text, opts),
     onCatch: (fish) => {
-      recordCatch(fish.id)
+      recordCatch(fish.id, fish.weight)
       if (session?.user) {
-        addInventoryItem(session.user.id, fish.id).catch(() => {})
+        addInventoryItem(session.user.id, fish.id, fish.weight).catch(() => {})
       }
       if (!fish.junk) {
         score += fish.points
@@ -85,9 +87,17 @@ function startGame({ session, username, guest }) {
   const pauseMenu = new PauseMenu(menuRoot, {
     username,
     userId: session?.user?.id ?? null,
+    getScore: () => score,
+    spendScore: (amount) => {
+      if (score < amount) return false
+      score -= amount
+      hud.setScore(score)
+      return true
+    },
     onSensitivityChange: (v) => {
       player.controls.pointerSpeed = v
     },
+    onStoreChange: () => hud.setBadge(getCosmeticBadge()),
     onResume: () => {
       if (touch) {
         paused = false

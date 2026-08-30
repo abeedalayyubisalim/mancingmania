@@ -113,23 +113,34 @@ export async function fetchLeaderboard(limit = 10) {
 // owns the row.
 // ---------------------------------------------------------------------------
 
-export async function addInventoryItem(userId, jenis) {
+export async function addInventoryItem(userId, jenis, berat) {
   if (!supabase || !userId) return
-  await supabase.from('inventory').insert({
-    id: crypto.randomUUID(),
-    user_id: userId,
-    jenis,
-  })
+  const row = { id: crypto.randomUUID(), user_id: userId, jenis }
+  if (typeof berat === 'number') row.berat = berat
+  const { error } = await supabase.from('inventory').insert(row)
+  if (error && typeof berat === 'number') {
+    // Table doesn't have a `berat` column yet (migration not run) — retry
+    // without it so the catch still gets saved.
+    await supabase.from('inventory').insert({ id: crypto.randomUUID(), user_id: userId, jenis })
+  }
 }
 
 // Returns every inventory row for this user, oldest first.
 export async function fetchInventory(userId) {
   if (!supabase || !userId) return []
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('inventory')
-    .select('jenis, created_at')
+    .select('jenis, created_at, berat')
     .eq('user_id', userId)
     .order('created_at', { ascending: true })
+  if (error) {
+    // Older table without `berat` — retry without selecting it.
+    ;({ data, error } = await supabase
+      .from('inventory')
+      .select('jenis, created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true }))
+  }
   if (error) return []
   return data
 }

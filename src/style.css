@@ -262,6 +262,29 @@ html, body {
   margin-top: 4px;
 }
 
+#catch-share-btn.hidden {
+  display: none;
+}
+
+#catch-share-btn {
+  display: block;
+  margin: 12px auto 0;
+  padding: 8px 18px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+#user-badge {
+  color: #ffd479;
+  font-size: 11px;
+}
+
 #leaderboard-toggle {
   position: absolute;
   top: 16px;
@@ -577,6 +600,89 @@ html, body {
   border-top: 1px solid rgba(255, 255, 255, 0.12);
   padding-top: 10px;
   margin-bottom: 10px;
+}
+
+/* ---------- Store ---------- */
+#pause-view-store h3 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+#store-balance {
+  font-size: 13px;
+  font-weight: 400;
+  color: #ffd479;
+}
+
+#store-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-bottom: 6px;
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+.store-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  text-align: center;
+}
+
+.store-card.owned {
+  border-color: rgba(124, 252, 154, 0.4);
+  background: rgba(124, 252, 154, 0.08);
+}
+
+.store-card-icon {
+  font-size: 26px;
+}
+
+.store-card-name {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.store-card-desc {
+  font-size: 10.5px;
+  color: #b7cdd8;
+  line-height: 1.35;
+  min-height: 34px;
+}
+
+.store-card-owned {
+  font-size: 11px;
+  color: #7cfc9a;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.store-buy-btn {
+  margin-top: 2px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: linear-gradient(135deg, #37a3e0, #1c6fa5);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  width: 100%;
+}
+
+.store-buy-btn:disabled {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.4);
+  cursor: not-allowed;
 }
 
 /* ---------- Touch controls ---------- */

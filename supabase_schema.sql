@@ -43,6 +43,10 @@ create table if not exists public.inventory (
   created_at timestamptz not null default now()
 );
 
+-- Already have the table but no `berat` (weight, kg) column yet? Run just
+-- this line — it's safe to run even if the column already exists.
+alter table public.inventory add column if not exists berat numeric;
+
 alter table public.inventory enable row level security;
 
 -- A player can only see their own inventory (unlike the public leaderboard).

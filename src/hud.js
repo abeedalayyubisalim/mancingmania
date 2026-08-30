@@ -1,13 +1,15 @@
 import { isTouchDevice } from './settings.js'
+import { shareCatch } from './share-card.js'
 
 export class Hud {
   constructor(root) {
     this.root = root
+    this.username = ''
     root.innerHTML = `
       <div id="crosshair"></div>
       <div id="top-bar">
-        <div id="score-box">Skor: <span id="score-value">0</span></div>
-        <div id="user-box"><span id="username-value"></span></div>
+        <div id="score-box">🪙 <span id="score-value">0</span></div>
+        <div id="user-box"><span id="username-value"></span><span id="user-badge"></span></div>
       </div>
       <div id="status-box">
         <div id="status-text">Klik untuk mulai memancing</div>
@@ -17,6 +19,7 @@ export class Hud {
       <div id="catch-popup" class="hidden">
         <div id="catch-title"></div>
         <div id="catch-points"></div>
+        <button id="catch-share-btn" class="hidden">📤 Bagikan</button>
       </div>
       <button id="leaderboard-toggle" title="Papan Skor">🏆</button>
       <div id="leaderboard-panel" class="hidden">
@@ -35,6 +38,7 @@ export class Hud {
 
     this.scoreEl = root.querySelector('#score-value')
     this.usernameEl = root.querySelector('#username-value')
+    this.badgeEl = root.querySelector('#user-badge')
     this.statusText = root.querySelector('#status-text')
     this.powerBar = root.querySelector('#power-bar')
     this.powerFill = root.querySelector('#power-fill')
@@ -43,15 +47,24 @@ export class Hud {
     this.catchPopup = root.querySelector('#catch-popup')
     this.catchTitle = root.querySelector('#catch-title')
     this.catchPoints = root.querySelector('#catch-points')
+    this.shareBtn = root.querySelector('#catch-share-btn')
     this.leaderboardPanel = root.querySelector('#leaderboard-panel')
     this.leaderboardList = root.querySelector('#leaderboard-list')
 
     root.querySelector('#leaderboard-toggle').addEventListener('click', () => this.toggleLeaderboard())
     root.querySelector('#leaderboard-close').addEventListener('click', () => this.toggleLeaderboard(false))
+    this.shareBtn.addEventListener('click', () => {
+      if (this._lastCatch) shareCatch(this._lastCatch, this.username)
+    })
   }
 
   setUsername(name) {
-    this.usernameEl.textContent = name ?? ''
+    this.username = name ?? ''
+    this.usernameEl.textContent = this.username
+  }
+
+  setBadge(badge) {
+    this.badgeEl.textContent = badge ? ` · ${badge}` : ''
   }
 
   setScore(score) {
@@ -78,11 +91,15 @@ export class Hud {
   }
 
   showCatch(fish) {
+    this._lastCatch = fish
     this.catchTitle.textContent = fish.junk ? fish.name : `🐟 ${fish.name}`
-    this.catchPoints.textContent = fish.junk ? 'Bukan ikan...' : `+${fish.points} poin`
+    this.catchPoints.textContent = fish.junk
+      ? 'Bukan ikan...'
+      : `${fish.weight.toFixed(2)} kg · +${fish.points} poin`
     this.catchPopup.classList.remove('hidden')
+    this.shareBtn.classList.remove('hidden')
     clearTimeout(this._catchTimer)
-    this._catchTimer = setTimeout(() => this.catchPopup.classList.add('hidden'), 2200)
+    this._catchTimer = setTimeout(() => this.catchPopup.classList.add('hidden'), 4000)
   }
 
   toggleLeaderboard(force) {

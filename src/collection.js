@@ -12,7 +12,7 @@ function load() {
   }
 }
 
-// { [fishId]: { count, firstCaughtAt } }
+// { [fishId]: { count, firstCaughtAt, maxWeight } }
 const state = load()
 
 function save() {
@@ -23,11 +23,12 @@ function save() {
   }
 }
 
-export function recordCatch(fishId) {
+export function recordCatch(fishId, weight = 0) {
   const entry = state[fishId]
   state[fishId] = {
     count: (entry?.count ?? 0) + 1,
     firstCaughtAt: entry?.firstCaughtAt ?? Date.now(),
+    maxWeight: Math.max(entry?.maxWeight ?? 0, weight ?? 0),
   }
   save()
   return state[fishId]
@@ -45,18 +46,21 @@ export function totalCaughtSpecies() {
   return Object.keys(state).length
 }
 
-// Turns raw Supabase inventory rows ({jenis, created_at}, oldest first)
-// into the same { [jenis]: { count, firstCaughtAt } } shape as local
-// storage uses, so the gallery UI doesn't need to care which source it
-// came from.
+// Turns raw Supabase inventory rows ({jenis, created_at, berat}, oldest
+// first) into the same { [jenis]: { count, firstCaughtAt, maxWeight } }
+// shape as local storage uses, so the gallery UI doesn't need to care which
+// source it came from. `berat` may be missing on older rows/tables — those
+// just don't count toward maxWeight.
 export function groupInventoryRows(rows) {
   const grouped = {}
   for (const row of rows) {
     const entry = grouped[row.jenis]
     const t = new Date(row.created_at).getTime()
+    const w = typeof row.berat === 'number' ? row.berat : 0
     grouped[row.jenis] = {
       count: (entry?.count ?? 0) + 1,
       firstCaughtAt: entry?.firstCaughtAt ?? t,
+      maxWeight: Math.max(entry?.maxWeight ?? 0, w),
     }
   }
   return grouped
