@@ -299,3 +299,42 @@ export async function removeFriend(userId, friendId) {
   if (!supabase || !userId) return
   await supabase.from('friends').delete().eq('user_id', userId).eq('friend_id', friendId)
 }
+
+// ---------------------------------------------------------------------------
+// Match history (see supabase_schema.sql) — Sub-tahap D: one row per
+// finished MULTIPLAYER match (Mode Waktu / Mode Jenis Ikan). Single Player
+// and Survival never call this — those stay local-progress-only, per the
+// original design brief. Whichever client's game/multiplayer.js detects
+// the match ending is the one that calls recordMatchHistory(); everyone
+// else just renders the same 'end' broadcast they already show a results
+// popup from (see MultiplayerSession._endMatch/_handleEnd).
+// ---------------------------------------------------------------------------
+
+export async function recordMatchHistory({ roomCode, mode, params, results, winnerId }) {
+  if (!supabase) return
+  await supabase.from('match_history').insert({
+    room_code: roomCode,
+    mode,
+    params,
+    results,
+    winner_id: winnerId,
+    participant_ids: results.map((r) => r.id).filter(Boolean),
+  })
+}
+
+// Most recent matches a given player took part in, newest first — shown on
+// their Profile screen (works for self AND other players, same as their
+// fish collection/gear already do, since match_history is publicly
+// readable). Guests get an empty list here: their id is a fresh random
+// uuid every session, so there's nothing stable in Supabase to look up.
+export async function fetchMatchHistory(userId, limit = 10) {
+  if (!supabase || !userId) return []
+  const { data, error } = await supabase
+    .from('match_history')
+    .select('id, room_code, mode, params, results, winner_id, created_at')
+    .contains('participant_ids', [userId])
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error) return []
+  return data
+}

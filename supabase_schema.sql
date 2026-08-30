@@ -121,3 +121,46 @@ drop policy if exists "Players can remove their own friends" on public.friends;
 create policy "Players can remove their own friends"
   on public.friends for delete
   using (auth.uid()::text = user_id);
+
+-- ---------------------------------------------------------------------------
+-- `match_history` — one row per finished MULTIPLAYER match (Mode Waktu /
+-- Mode Jenis Ikan only — Single Player and Survival are intentionally never
+-- recorded here). `results` is the full final scoreboard as JSON
+-- ([{id, name, points, catches}, ...], already sorted by points) and
+-- `participant_ids` pulls just those ids out into their own column so a
+-- player's Profile can cheaply ask "every match I was part of" with one
+-- `@>` containment check instead of scanning/parsing `results` itself.
+-- ---------------------------------------------------------------------------
+
+create table if not exists public.match_history (
+  id uuid primary key default gen_random_uuid(),
+  room_code text not null,
+  mode text not null,
+  params jsonb not null default '{}'::jsonb,
+  results jsonb not null,
+  winner_id text,
+  participant_ids text[] not null default '{}',
+  created_at timestamptz not null default now()
+);
+
+create index if not exists match_history_participant_idx on public.match_history using gin (participant_ids);
+
+alter table public.match_history enable row level security;
+
+-- Public read — a player's match history shows up on their profile the
+-- same way their fish collection/gear already does.
+drop policy if exists "Match history is publicly readable" on public.match_history;
+create policy "Match history is publicly readable"
+  on public.match_history for select
+  using (true);
+
+-- Any client that was actually in the room can report a finished match.
+-- Unlike leaderboard/inventory/friends, one match_history row covers
+-- EVERYONE in that round, not just the id of whoever's client inserts it —
+-- and since there's no game server, it might be any participant's client
+-- (guest included) that detects the end condition first and reports it —
+-- so this can't be narrowed to "only your own id" the way those tables are.
+drop policy if exists "Players can record a finished match" on public.match_history;
+create policy "Players can record a finished match"
+  on public.match_history for insert
+  with check (true);

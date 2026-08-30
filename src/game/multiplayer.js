@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { buildCharacterAvatar, CHARACTER_HEIGHT } from './character.js'
 import { DEFAULT_ROD_COLOR } from './player.js'
 import { joinRoomChannel, leaveRoomChannel, broadcastRoom, generateRoomCode } from '../social.js'
+import { recordMatchHistory } from '../supabase-client.js'
 
 // How often (seconds) we broadcast our own position/heading while a match
 // is running. 1000/120 ≈ 8Hz — smooth enough once lerped on the receiving
@@ -315,7 +316,14 @@ export class MultiplayerSession {
     const results = [...this.catchLog.entries()]
       .map(([id, e]) => ({ id, name: e.name, points: e.points, catches: e.catches }))
       .sort((a, b) => b.points - a.points)
-    broadcastRoom('end', { results, winnerId: winnerId ?? results[0]?.id ?? null, mode: this.mode })
+    const finalWinnerId = winnerId ?? results[0]?.id ?? null
+    broadcastRoom('end', { results, winnerId: finalWinnerId, mode: this.mode })
+    // Only the one client that actually detected the end condition writes
+    // the history row — everyone else's _handleEnd below just renders the
+    // same broadcast, so this never double-inserts the same match.
+    recordMatchHistory({ roomCode: this.roomCode, mode: this.mode, params: this.params, results, winnerId: finalWinnerId }).catch(
+      () => {} // best-effort — a failed write (schema not migrated yet, offline, etc.) shouldn't block anyone's results popup
+    )
   }
 
   // Fires for every client (including whoever triggered it, via the

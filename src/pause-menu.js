@@ -12,6 +12,7 @@ import {
   fetchFriends,
   addFriend,
   removeFriend,
+  fetchMatchHistory,
 } from './supabase-client.js'
 import { FISH_TYPES, pointsForWeight } from './game/fish-data.js'
 import { isOnline, onlineCount, getOnlinePlayers } from './social.js'
@@ -241,6 +242,10 @@ export class PauseMenu {
           <div id="avatar-picker-grid"></div>
           <button class="pause-btn back-btn" data-back="profile">← Kembali</button>
         </div>
+        <div id="pause-view-match-detail" class="pause-view hidden">
+          <div id="match-detail-body"></div>
+          <button class="pause-btn back-btn" data-back="profile">← Kembali ke Profil</button>
+        </div>
       </div>
     `
     root.appendChild(this.el)
@@ -256,6 +261,7 @@ export class PauseMenu {
       store: this.el.querySelector('#pause-view-store'),
       profile: this.el.querySelector('#pause-view-profile'),
       'avatar-picker': this.el.querySelector('#pause-view-avatar-picker'),
+      'match-detail': this.el.querySelector('#pause-view-match-detail'),
       friends: this.el.querySelector('#pause-view-friends'),
       'mode-select': this.el.querySelector('#pause-view-mode-select'),
       'singleplayer-select': this.el.querySelector('#pause-view-singleplayer-select'),
@@ -883,6 +889,12 @@ export class PauseMenu {
     }
 
     const inventoryRows = targetUserId ? await fetchInventory(targetUserId) : null
+    // Sub-tahap D: recent multiplayer match history (Mode Waktu / Mode
+    // Jenis Ikan only — Single Player/Survival were never meant to show up
+    // here, see game/multiplayer.js). Guests always get [] back since
+    // there's no stable id to look their history up under.
+    const matchHistory = targetUserId ? await fetchMatchHistory(targetUserId, 8) : []
+    this._profileMatches = matchHistory
     const fishIds = new Set(FISH_TYPES.map((f) => f.id))
     const fishRows = inventoryRows ? inventoryRows.filter((r) => fishIds.has(r.jenis)) : null
     const grouped = fishRows ? groupInventoryRows(fishRows) : null
@@ -975,6 +987,26 @@ export class PauseMenu {
       : (getOnlinePlayers().find((p) => p.id === targetUserId)?.rodColor ?? DEFAULT_ROD_COLOR)
     this._updateAvatarPreview({ hat: hasHat, vest: hasVest, rodColor })
 
+    const matchesHtml = matchHistory.length
+      ? matchHistory
+          .map((m) => {
+            const mine = m.results.find((r) => r.id === targetUserId)
+            const isWinner = m.winner_id === targetUserId
+            const date = new Date(m.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
+            return `
+              <button class="match-history-row" data-match="${m.id}">
+                <span class="match-history-mode">${m.mode === 'time' ? '⏱️' : '🎯'}</span>
+                <span class="match-history-info">
+                  <span class="match-history-date">${date}</span>
+                  <span class="match-history-players">${m.results.length} pemain</span>
+                </span>
+                <span class="match-history-result ${isWinner ? 'win' : ''}">${isWinner ? '🏆 Menang' : `${mine?.points ?? 0} poin`}</span>
+              </button>
+            `
+          })
+          .join('')
+      : `<p class="gallery-status">${isSelf ? 'Belum ada riwayat pertandingan multiplayer.' : 'Belum ada riwayat pertandingan.'}</p>`
+
     body.innerHTML = `
       <div class="profile-header">
         <div class="profile-avatar-wrap">
@@ -1003,6 +1035,8 @@ export class PauseMenu {
       <div class="profile-mini-grid">${speciesGrid}</div>
       <h4>Inventaris</h4>
       <div class="profile-mini-grid">${gearHtml}</div>
+      <h4>Riwayat Pertandingan</h4>
+      <div class="match-history-list">${matchesHtml}</div>
     `
 
     body.querySelectorAll('.profile-mini-item[data-fish]').forEach((btn) => {
@@ -1016,6 +1050,9 @@ export class PauseMenu {
         const item = this.profileGearItems.find((g) => g.key === btn.dataset.gearkey)
         if (item) this._showItemDetail(item)
       })
+    })
+    body.querySelectorAll('.match-history-row').forEach((btn) => {
+      btn.addEventListener('click', () => this._showMatchDetail(btn.dataset.match, targetUserId))
     })
     const editBtn = body.querySelector('#profile-avatar-edit')
     if (editBtn) editBtn.addEventListener('click', () => this._showAvatarPicker())
@@ -1065,6 +1102,36 @@ export class PauseMenu {
         this._showItemDetail(item)
       })
     }
+  }
+
+  // Full scoreboard for one match from a Profile's "Riwayat Pertandingan"
+  // list — reuses the same .mp-result-row look as the live end-of-match
+  // popup (see multiplayer-ui.js) so a past match and a just-finished one
+  // read identically.
+  _showMatchDetail(matchId, viewerUserId) {
+    const match = this._profileMatches?.find((m) => m.id === matchId)
+    if (!match) return
+    this._showView('match-detail')
+    const rows = match.results
+      .map((r, i) => {
+        const isWinner = r.id === match.winner_id
+        const isViewer = r.id === viewerUserId
+        return `
+          <div class="mp-result-row ${isWinner ? 'winner' : ''} ${isViewer ? 'me' : ''}">
+            <span class="mp-result-rank">${isWinner ? '🏆' : `#${i + 1}`}</span>
+            <span class="mp-result-name">${escapeHtml(r.name)}</span>
+            <span class="mp-result-catches">🐟 ${r.catches}</span>
+            <span class="mp-result-points">${r.points} poin</span>
+          </div>
+        `
+      })
+      .join('')
+    const date = new Date(match.created_at).toLocaleString('id-ID')
+    this.el.querySelector('#match-detail-body').innerHTML = `
+      <h3>${match.mode === 'time' ? '⏱️ Mode Waktu' : '🎯 Mode Jenis Ikan'}</h3>
+      <p class="detail-latin">${escapeHtml(date)} · Room ${escapeHtml(match.room_code)}</p>
+      <div class="mp-results-list">${rows}</div>
+    `
   }
 
   _showAvatarPicker() {

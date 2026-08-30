@@ -2216,3 +2216,61 @@ html, body {
   color: #8ba3ae;
   margin-bottom: 14px;
 }
+
+/* ---------- Match history (Profile — Sub-tahap D) ---------- */
+.match-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.match-history-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: none;
+  background: rgba(255, 255, 255, 0.06);
+  color: #dce9f0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.match-history-row:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.match-history-mode {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.match-history-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.match-history-date {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.match-history-players {
+  font-size: 11px;
+  color: #8ba3ae;
+}
+
+.match-history-result {
+  font-size: 12px;
+  font-weight: 700;
+  color: #cfe3ee;
+  flex-shrink: 0;
+}
+
+.match-history-result.win {
+  color: #ffd479;
+}
