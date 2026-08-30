@@ -71,6 +71,66 @@ function island(x, z, radius, opts = {}) {
   return group
 }
 
+// Survival-mode camp props (Sub-tahap Survival-A) — placed on the far side
+// of the home island from the dock/pier so they don't clash with it, using
+// the same low-poly/flatShading language as everything else here. Present
+// in the scene at all times (harmless during Normal mode, same as the boat
+// always being there); only interactable while a survival run is active —
+// see main.js's updateInteractPrompt().
+function buildCave(x, z) {
+  const group = new THREE.Group()
+  const rockMat = new THREE.MeshStandardMaterial({ color: 0x6b6a62, flatShading: true })
+  const mouthMat = new THREE.MeshStandardMaterial({ color: 0x0c0c0e, flatShading: true })
+
+  const mound = new THREE.Mesh(new THREE.DodecahedronGeometry(2.3, 0), rockMat)
+  mound.position.set(0, 1.5, -0.6)
+  mound.scale.set(1.3, 0.95, 1.1)
+  mound.castShadow = true
+  mound.receiveShadow = true
+  group.add(mound)
+
+  const mouth = new THREE.Mesh(new THREE.CircleGeometry(0.9, 12), mouthMat)
+  mouth.position.set(0, 0.95, 0.85)
+  group.add(mouth)
+
+  for (const [dx, dz, s] of [
+    [-1.6, 0.6, 0.7],
+    [1.7, 0.3, 0.9],
+    [0.6, 1.3, 0.5],
+  ]) {
+    group.add(lowPolyRock(dx, dz, s))
+  }
+
+  group.position.set(x, 0, z)
+  return group
+}
+
+function buildSpring(x, z) {
+  const group = new THREE.Group()
+  const poolMat = new THREE.MeshStandardMaterial({
+    color: 0x4fb0d8,
+    flatShading: true,
+    roughness: 0.4,
+    transparent: true,
+    opacity: 0.9,
+  })
+  const pool = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.15, 0.1, 14), poolMat)
+  pool.position.set(0, 0.06, 0)
+  group.add(pool)
+
+  for (const [dx, dz, s] of [
+    [-1.1, -0.4, 0.45],
+    [1.0, -0.6, 0.4],
+    [0.3, 1.1, 0.5],
+    [-0.7, 0.9, 0.35],
+  ]) {
+    group.add(lowPolyRock(dx, dz, s))
+  }
+
+  group.position.set(x, 0, z)
+  return group
+}
+
 function buildDock() {
   const group = new THREE.Group()
   const woodMat = new THREE.MeshStandardMaterial({ color: 0x8a5a34, flatShading: true, roughness: 0.9 })
@@ -155,6 +215,10 @@ export function buildEnvironment(scene) {
   const homeIsland = island(0, 3, 7, { avoidAngleRange: [0.3, Math.PI - 0.3] })
   scene.add(homeIsland)
 
+  // Survival camp — south/west side of the same island, away from the dock.
+  scene.add(buildCave(SURVIVAL_CAVE_POSITION.x, SURVIVAL_CAVE_POSITION.z))
+  scene.add(buildSpring(SURVIVAL_SPRING_POSITION.x, SURVIVAL_SPRING_POSITION.z))
+
   // A scattering of distant islands + rocks for horizon interest.
   const decor = new THREE.Group()
   const positions = [
@@ -178,6 +242,13 @@ export function buildEnvironment(scene) {
 export const BOAT_DOCK_POSITION = { x: 2.6, z: 24 }
 // Where the player ends up back on the pier after disembarking.
 export const PIER_RETURN_POSITION = { x: 0, z: 20 }
+
+// Survival camp (Sub-tahap Survival-A) — see buildCave/buildSpring above.
+export const SURVIVAL_CAVE_POSITION = { x: 0, z: -2 }
+export const SURVIVAL_SPRING_POSITION = { x: -5, z: 2 }
+// Where a stranded player starts out — on the sand, facing the island
+// rather than straight out to open water.
+export const SURVIVAL_SPAWN_POSITION = { x: 2, z: 4 }
 // Beyond this distance from the home island, the water counts as "open
 // sea" — better odds at rare fish, and a couple of species that only turn
 // up out there.

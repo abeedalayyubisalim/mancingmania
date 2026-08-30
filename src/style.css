@@ -2513,3 +2513,204 @@ html, body {
 .match-history-result.win {
   color: #ffd479;
 }
+
+/* ---------- Survival mode (Sub-tahap Survival-A) ---------- */
+
+/* Sits below #achievement-toast/#levelup-toast's spot (top:66px, ~50px
+   tall) so an achievement popping mid-survival doesn't fight the bars for
+   the same pixels. Non-interactive — no pointer-events override needed,
+   #hud-root's default pointer-events:none is correct here. */
+#survival-hud {
+  position: absolute;
+  top: 122px;
+  left: 16px;
+  width: 210px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+#survival-hud.hidden {
+  display: none;
+}
+
+#survival-day {
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffe6a8;
+  margin-bottom: 8px;
+}
+
+.survival-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.survival-bar-row:last-child {
+  margin-bottom: 0;
+}
+
+.survival-bar-icon {
+  width: 16px;
+  text-align: center;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.survival-bar {
+  flex: 1;
+  height: 9px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.survival-bar-fill {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.survival-bar-fill.hunger {
+  background: linear-gradient(90deg, #e08a3c, #f2c14e);
+}
+
+.survival-bar-fill.thirst {
+  background: linear-gradient(90deg, #2f8fd1, #6fcdf0);
+}
+
+.survival-bar-fill.stamina {
+  background: linear-gradient(90deg, #4a9d4f, #7cfc9a);
+}
+
+.survival-bar-fill.low {
+  background: linear-gradient(90deg, #b23a3a, #e85f5f);
+  animation: survival-bar-pulse 1s ease-in-out infinite;
+}
+
+@keyframes survival-bar-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+/* Small transient message for feed/drink/sleep events — kept separate from
+   #status-text (fishing.js's own status line) so the two never collide. */
+#survival-toast {
+  position: absolute;
+  bottom: 76px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.55);
+  color: #dce9f0;
+  font-size: 12px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+
+#survival-toast.hidden {
+  display: none;
+}
+
+/* Full-screen fade while sleeping fast-forwards to the next dawn. */
+.survival-sleep-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 6, 14, 0.94);
+  z-index: 94;
+  animation: survival-fade-in 0.4s ease;
+}
+
+@keyframes survival-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.survival-sleep-text {
+  color: #fff;
+  font-size: 22px;
+  text-align: center;
+  line-height: 1.6;
+}
+
+.survival-sleep-text small {
+  font-size: 14px;
+  color: #b7cdd8;
+}
+
+/* End-of-run screen (win or lose) — same overlay/modal language as
+   .mp-results-overlay/.mp-results-modal for visual consistency. */
+.survival-end-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.75);
+  z-index: 97;
+  padding: 20px;
+}
+
+.survival-end-modal {
+  width: 340px;
+  max-width: 92vw;
+  background: rgba(10, 25, 35, 0.96);
+  border: 1px solid rgba(255, 212, 121, 0.4);
+  border-radius: 16px;
+  padding: 28px 22px 22px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+}
+
+.survival-end-icon {
+  font-size: 46px;
+}
+
+.survival-end-modal h3 {
+  margin: 8px 0 4px;
+  font-size: 20px;
+}
+
+.survival-end-desc {
+  color: #b7cdd8;
+  font-size: 13px;
+  margin: 0 0 16px;
+}
+
+.survival-end-stats {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.survival-end-stat {
+  flex: 1;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 8px 4px;
+}
+
+.survival-end-stat span {
+  display: block;
+  font-size: 10px;
+  color: #9fc7db;
+  margin-bottom: 2px;
+}
+
+.survival-end-stat b {
+  font-size: 16px;
+  color: #ffd479;
+}
+
+.survival-end-record {
+  font-size: 12px;
+  font-weight: 700;
+  color: #9fe3ff;
+  margin: 0 0 14px;
+}

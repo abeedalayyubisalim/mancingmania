@@ -31,6 +31,7 @@ export class Fishing {
     getZone,
     getExtraBiteSpeedBonus,
     getExtraLegendaryBonus,
+    getCatchStatusText,
   }) {
     this.scene = scene
     this.camera = camera
@@ -46,6 +47,10 @@ export class Fishing {
     this.getZone = getZone ?? (() => ({}))
     this.getExtraBiteSpeedBonus = getExtraBiteSpeedBonus ?? (() => 0)
     this.getExtraLegendaryBonus = getExtraLegendaryBonus ?? (() => 0)
+    // Lets a caller (Survival mode) override the "Dapat X! +N poin" status
+    // line with something else (Hunger restored instead of points) — see
+    // main.js. Returning a falsy value from it falls back to the default.
+    this.getCatchStatusText = getCatchStatusText ?? (() => null)
 
     this.state = STATE.IDLE
     this.power = 0
@@ -239,10 +244,12 @@ export class Fishing {
     this.currentFish = null
     playCatch(fish)
     this.onCatch?.(fish)
+    const overrideText = this.getCatchStatusText(fish)
     this._setStatus(
-      fish.junk
-        ? `Cuma dapat ${fish.name}...`
-        : `Dapat ${fish.name} (${fish.weight.toFixed(2)} kg)! +${fish.points} poin`,
+      overrideText ||
+        (fish.junk
+          ? `Cuma dapat ${fish.name}...`
+          : `Dapat ${fish.name} (${fish.weight.toFixed(2)} kg)! +${fish.points} poin`),
       { reset: true }
     )
   }

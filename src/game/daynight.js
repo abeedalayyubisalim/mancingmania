@@ -9,6 +9,12 @@ import { setRainSound } from '../audio.js'
 // legendary golden fish is a bit more likely to turn up at night.
 const CYCLE_SECONDS = 600
 
+// Nudges the day/night indicator label thresholds live in getLabel() below
+// (Malam/Pagi/Siang/Sore/Senja) — kept here as one source of truth for
+// "what does dawn look like" so skipToNextDawn() lands somewhere that
+// actually reads as morning regardless of cycleSeconds.
+const DAWN_T = 0.26
+
 const SKY_DAY = new THREE.Color(0x9fd8e8)
 const SKY_SUNSET = new THREE.Color(0xf2a765)
 const SKY_NIGHT = new THREE.Color(0x0b1830)
@@ -25,13 +31,18 @@ function smooth01(x) {
 }
 
 export class DayNightCycle {
-  constructor({ scene, sun, hemi, ambient, camera }) {
+  constructor({ scene, sun, hemi, ambient, camera, cycleSeconds = CYCLE_SECONDS }) {
     this.scene = scene
     this.sun = sun
     this.hemi = hemi
     this.ambient = ambient
     this.camera = camera
-    this.elapsed = CYCLE_SECONDS * 0.3 // start mid-morning, not at midnight
+    // How many real seconds one full day/night rotation takes. Normal mode
+    // uses the default (600s); Survival compresses this a lot (see
+    // game/survival.js) so 10 in-game days fit a reasonable play session,
+    // then restores the default when the run ends.
+    this.cycleSeconds = cycleSeconds
+    this.elapsed = this.cycleSeconds * 0.3 // start mid-morning, not at midnight
     this.weather = 'clear'
     this._weatherTimer = 45 + Math.random() * 60
     this._baseFogNear = scene.fog.near
@@ -93,9 +104,29 @@ export class DayNightCycle {
     setRainSound(weather === 'rain')
   }
 
+  // Changes the day/night pacing going forward — does NOT reset the current
+  // time-of-day, it just changes how fast `elapsed` accumulates relative to
+  // one full cycle from here on.
+  setCycleSeconds(seconds) {
+    // Preserve the current phase (t) under the new cycle length so the sky
+    // doesn't jump/flicker the instant this is called.
+    const t = (this.elapsed % this.cycleSeconds) / this.cycleSeconds
+    this.cycleSeconds = seconds
+    this.elapsed = t * seconds
+  }
+
+  // Fast-forwards straight to "just past dawn" of the NEXT cycle — used by
+  // Survival's sleep-in-the-cave action (see game/survival.js). Always
+  // moves forward in time, however far into the current night we are.
+  skipToNextDawn() {
+    const cyc = this.cycleSeconds
+    const idx = Math.floor(this.elapsed / cyc)
+    this.elapsed = (idx + 1) * cyc + cyc * DAWN_T
+  }
+
   update(dt) {
     this.elapsed += dt
-    const t = (this.elapsed % CYCLE_SECONDS) / CYCLE_SECONDS
+    const t = (this.elapsed % this.cycleSeconds) / this.cycleSeconds
     // -1 at midnight, +1 at noon, 0 at sunrise/sunset.
     const sunHeight = -Math.cos(t * Math.PI * 2)
     this._sunHeight = sunHeight

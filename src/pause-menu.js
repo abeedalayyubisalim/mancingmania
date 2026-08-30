@@ -67,6 +67,9 @@ export class PauseMenu {
       getAchievementsState,
       multiplayer,
       onInviteFriend,
+      survival,
+      onStartSurvival,
+      onLeaveSurvival,
     }
   ) {
     this.onResume = onResume
@@ -83,6 +86,9 @@ export class PauseMenu {
     this.userId = userId ?? null
     this.multiplayer = multiplayer ?? null
     this.onInviteFriend = onInviteFriend ?? null
+    this.survival = survival ?? null
+    this.onStartSurvival = onStartSurvival ?? null
+    this.onLeaveSurvival = onLeaveSurvival ?? null
     this._mpInviteLoaded = false
     this.galleryData = null
     // Which view the fish/item detail popup's back button returns to —
@@ -104,6 +110,7 @@ export class PauseMenu {
           }</p>
           <button id="pause-play" class="pause-btn primary">▶ Main</button>
           <button id="pause-leave-match" class="pause-btn danger hidden">🚪 Keluar dari Pertandingan</button>
+          <button id="pause-leave-survival" class="pause-btn danger hidden">🚪 Keluar dari Survival</button>
           <div class="menu-grid">
             <button id="pause-profile" class="menu-tile"><span class="menu-tile-icon">👤</span><span class="menu-tile-label">Profil</span></button>
             <button id="pause-gallery" class="menu-tile"><span class="menu-tile-icon">🐟</span><span class="menu-tile-label">Koleksi</span></button>
@@ -135,7 +142,7 @@ export class PauseMenu {
           </button>
           <button id="sp-survival" class="menu-tile-wide">
             <span class="mtw-icon">🏝️</span>
-            <span class="mtw-body"><b>Survival</b><span class="mtw-desc">Mode bertahan hidup — segera hadir.</span></span>
+            <span class="mtw-body"><b>Survival</b><span class="mtw-desc">Terdampar 10 hari — mancing, minum, tidur di gua sebelum kehabisan tenaga.</span></span>
           </button>
           <button class="pause-btn back-btn" data-back="mode-select">← Kembali</button>
         </div>
@@ -285,14 +292,20 @@ export class PauseMenu {
     }
 
     this.el.querySelector('#pause-play').addEventListener('click', () => {
-      // Mid-match and just checking the pause menu (Esc) — "Main" should
-      // jump straight back into the game, not re-offer the mode picker.
-      if (this.multiplayer?.matchActive) this.onResume?.()
+      // Mid-match/mid-survival and just checking the pause menu (Esc) —
+      // "Main" should jump straight back into the game, not re-offer the
+      // mode picker.
+      if (this.multiplayer?.matchActive || this.survival?.active) this.onResume?.()
       else this._showView('mode-select')
     })
     this.el.querySelector('#pause-leave-match').addEventListener('click', () => {
       this.multiplayer?.leaveRoom()
       this.el.querySelector('#pause-leave-match').classList.add('hidden')
+    })
+    this.el.querySelector('#pause-leave-survival').addEventListener('click', () => {
+      this.survival?.abandon()
+      this.onLeaveSurvival?.()
+      this.el.querySelector('#pause-leave-survival').classList.add('hidden')
     })
     this.el.querySelector('#mode-singleplayer').addEventListener('click', () => this._showView('singleplayer-select'))
     this.el.querySelector('#mode-multiplayer').addEventListener('click', () => {
@@ -314,9 +327,7 @@ export class PauseMenu {
     )
     if (this.multiplayer) this.multiplayer.onRoomChange = () => this._renderMpRoom()
     this.el.querySelector('#sp-normal').addEventListener('click', () => this.onResume?.())
-    this.el.querySelector('#sp-survival').addEventListener('click', () =>
-      this._showComingSoon('🏝️ Survival', 'Mode bertahan hidup lagi disusun. Sabar ya!', 'singleplayer-select')
-    )
+    this.el.querySelector('#sp-survival').addEventListener('click', () => this.onStartSurvival?.())
     this.el.querySelector('#coming-soon-back').addEventListener('click', () => this._showView(this._comingSoonBackView))
     this.el.querySelector('#pause-leaderboard').addEventListener('click', () => this._showLeaderboard('alltime'))
     this.el.querySelector('#pause-settings').addEventListener('click', () => this._showView('settings'))
@@ -1247,6 +1258,7 @@ export class PauseMenu {
     this._showView('main')
     this.el.classList.remove('hidden')
     this.el.querySelector('#pause-leave-match').classList.toggle('hidden', !this.multiplayer?.matchActive)
+    this.el.querySelector('#pause-leave-survival').classList.toggle('hidden', !this.survival?.active)
   }
 
   close() {

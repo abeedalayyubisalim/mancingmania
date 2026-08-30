@@ -15,6 +15,12 @@ export class Hud {
     root.innerHTML = `
       <div id="crosshair"></div>
       <div id="mp-banner" class="hidden"></div>
+      <div id="survival-hud" class="hidden">
+        <div id="survival-day"></div>
+        <div class="survival-bar-row"><span class="survival-bar-icon">🍖</span><div class="survival-bar"><div id="survival-bar-hunger" class="survival-bar-fill hunger"></div></div></div>
+        <div class="survival-bar-row"><span class="survival-bar-icon">💧</span><div class="survival-bar"><div id="survival-bar-thirst" class="survival-bar-fill thirst"></div></div></div>
+        <div class="survival-bar-row"><span class="survival-bar-icon">⚡</span><div class="survival-bar"><div id="survival-bar-stamina" class="survival-bar-fill stamina"></div></div></div>
+      </div>
       <div id="top-bar">
         <div id="score-box">🪙 <span id="score-value">0</span></div>
         <div id="level-box">⭐ Lv.<span id="level-value">1</span></div>
@@ -100,6 +106,13 @@ export class Hud {
     this.timeWeatherEl = root.querySelector('#time-weather-box')
     this.interactPrompt = root.querySelector('#interact-prompt')
     this.mpBanner = root.querySelector('#mp-banner')
+    this.survivalHud = root.querySelector('#survival-hud')
+    this.survivalDayEl = root.querySelector('#survival-day')
+    this.survivalBars = {
+      hunger: root.querySelector('#survival-bar-hunger'),
+      thirst: root.querySelector('#survival-bar-thirst'),
+      stamina: root.querySelector('#survival-bar-stamina'),
+    }
     this.inviteToast = root.querySelector('#invite-toast')
     this.inviteToast.addEventListener('click', () => {
       if (!this._pendingInviteCode) return
@@ -250,14 +263,20 @@ export class Hud {
     }
   }
 
-  showCatch(fish) {
+  // `opts.foodAmount` (Survival mode only) swaps the usual "+N poin" line
+  // for how much Hunger this catch restored instead — Survival catches
+  // don't earn points/wallet, see main.js's onCatch branching.
+  showCatch(fish, opts = {}) {
     this._lastCatch = fish
     this.catchTitle.textContent = fish.junk ? fish.name : `🐟 ${fish.name}`
-    this.catchPoints.textContent = fish.junk
-      ? 'Bukan ikan...'
-      : `${fish.weight.toFixed(2)} kg · +${fish.points} poin`
+    if (opts.foodAmount != null) {
+      this.catchPoints.textContent =
+        opts.foodAmount > 0 ? `${fish.weight.toFixed(2)} kg · +${opts.foodAmount} 🍖 Lapar` : 'Bukan makanan...'
+    } else {
+      this.catchPoints.textContent = fish.junk ? 'Bukan ikan...' : `${fish.weight.toFixed(2)} kg · +${fish.points} poin`
+    }
     this.catchPopup.classList.remove('hidden')
-    if (SHARE_ENABLED) this.shareBtn.classList.remove('hidden')
+    if (SHARE_ENABLED && !opts.foodAmount) this.shareBtn.classList.remove('hidden')
     clearTimeout(this._catchTimer)
     this._catchTimer = setTimeout(() => this.catchPopup.classList.add('hidden'), 4000)
   }
@@ -296,6 +315,40 @@ export class Hud {
 
   hideMpBanner() {
     this.mpBanner.classList.add('hidden')
+  }
+
+  // ---- Survival stat bars (Sub-tahap Survival-A) ----------------------
+  showSurvivalHud() {
+    this.survivalHud.classList.remove('hidden')
+  }
+
+  hideSurvivalHud() {
+    this.survivalHud.classList.add('hidden')
+  }
+
+  updateSurvivalStats({ day, totalDays, hunger, thirst, stamina }) {
+    this.survivalDayEl.textContent = `🏝️ Hari ${day}/${totalDays}`
+    this.survivalBars.hunger.style.width = `${Math.max(0, Math.min(100, hunger))}%`
+    this.survivalBars.thirst.style.width = `${Math.max(0, Math.min(100, thirst))}%`
+    this.survivalBars.stamina.style.width = `${Math.max(0, Math.min(100, stamina))}%`
+    this.survivalBars.hunger.classList.toggle('low', hunger < 25)
+    this.survivalBars.thirst.classList.toggle('low', thirst < 25)
+    this.survivalBars.stamina.classList.toggle('low', stamina < 25)
+  }
+
+  // A quick, small, transient message for Survival feed/drink/sleep events —
+  // separate from the fishing status line (#status-text, which fishing.js
+  // drives directly) so the two never fight over the same spot.
+  showSurvivalToast(text) {
+    if (!this._survivalToast) {
+      this._survivalToast = document.createElement('div')
+      this._survivalToast.id = 'survival-toast'
+      this.root.appendChild(this._survivalToast)
+    }
+    this._survivalToast.textContent = text
+    this._survivalToast.classList.remove('hidden')
+    clearTimeout(this._survivalToastTimer)
+    this._survivalToastTimer = setTimeout(() => this._survivalToast.classList.add('hidden'), 2600)
   }
 
   // A proactive, top-right, tap-to-join notification for a multiplayer room

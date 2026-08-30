@@ -7,6 +7,10 @@ import { getSkinColor } from '../store.js'
 const DOCK_BOUNDS = { minX: -2.6, maxX: 2.6, minZ: 2, maxZ: 24.5 }
 // Once aboard the boat, the whole (large) water plane is navigable.
 const BOAT_BOUNDS = { minX: -185, maxX: 185, minZ: -185, maxZ: 185 }
+// Survival mode roams the whole home island (dock/pier included) so the
+// player can reach the cave and freshwater spring on its far side — see
+// game/scene.js's SURVIVAL_CAVE_POSITION/SURVIVAL_SPRING_POSITION.
+const ISLAND_BOUNDS = { minX: -6.5, maxX: 6.5, minZ: -4.5, maxZ: 24.5 }
 const EYE_HEIGHT = 1.7
 const BOAT_EYE_HEIGHT = 1.5
 // The rod shaft's built-in color, absent any purchased skin.
@@ -106,13 +110,15 @@ export class Player {
     this.rodTipLocal = new THREE.Vector3(0, 1.3, 0)
   }
 
-  // Switches between walking on the dock (small bounds, fixed eye height)
-  // and piloting the boat (huge bounds spanning the whole water plane, eye
-  // height gently follows the waves). `position` (optional) re-places the
-  // camera immediately, e.g. to the boat's mooring spot or back to the dock.
+  // Switches between walking on the dock (small bounds, fixed eye height),
+  // roaming the home island during Survival ('island', wider bounds — see
+  // ISLAND_BOUNDS), and piloting the boat (huge bounds spanning the whole
+  // water plane, eye height gently follows the waves). `position` (optional)
+  // re-places the camera immediately, e.g. to the boat's mooring spot or
+  // back to the dock.
   setMode(mode, position = null) {
     this.mode = mode
-    this.bounds = mode === 'boat' ? BOAT_BOUNDS : DOCK_BOUNDS
+    this.bounds = mode === 'boat' ? BOAT_BOUNDS : mode === 'island' ? ISLAND_BOUNDS : DOCK_BOUNDS
     if (position) {
       this.camera.position.x = position.x
       this.camera.position.z = position.z

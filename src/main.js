@@ -8,11 +8,16 @@ import {
   PIER_RETURN_POSITION,
   OPEN_SEA_RADIUS,
   DEFAULT_BOAT_COLOR,
+  SURVIVAL_CAVE_POSITION,
+  SURVIVAL_SPRING_POSITION,
+  SURVIVAL_SPAWN_POSITION,
 } from './game/scene.js'
 import { Water } from './game/water.js'
 import { Player, DEFAULT_ROD_COLOR } from './game/player.js'
 import { Fishing } from './game/fishing.js'
 import { DayNightCycle } from './game/daynight.js'
+import { SurvivalSession, foodValueFor, TOTAL_DAYS as SURVIVAL_TOTAL_DAYS } from './game/survival.js'
+import { showSleepTransition, hideSleepTransition, showSurvivalEnd } from './survival-ui.js'
 import { fetchProfile, syncPoints, updateAvatar, fetchInventory, addInventoryItem, fetchFriends } from './supabase-client.js'
 import { PauseMenu } from './pause-menu.js'
 import { TouchControls } from './touch-controls.js'
@@ -244,6 +249,10 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
 
   const dayNight = new DayNightCycle({ scene, sun, hemi, ambient, camera })
 
+  // ---- Survival (Sub-tahap Survival-A: hunger/thirst/stamina/day-count
+  // core loop) ------------------------------------------------------------
+  const survival = new SurvivalSession({ dayNight })
+
   // ---- Multiplayer (Sub-tahap C: rooms, invites, live position sync) ----
   // No dedicated game server exists — this rides the same Supabase
   // Realtime broadcast/presence primitives as the lobby chat/presence
@@ -262,7 +271,7 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
   const DISEMBARK_RADIUS = 6
 
   function boardBoat() {
-    if (player.mode !== 'dock') return
+    if (player.mode === 'boat') return
     const d = Math.hypot(camera.position.x - BOAT_DOCK_POSITION.x, camera.position.z - BOAT_DOCK_POSITION.z)
     if (d >= BOARD_RADIUS) return
     unlockAudio()
@@ -276,32 +285,71 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
     const d = Math.hypot(camera.position.x - PIER_RETURN_POSITION.x, camera.position.z - PIER_RETURN_POSITION.z)
     if (d >= DISEMBARK_RADIUS) return
     fishing.releaseAction()
-    player.setMode('dock', PIER_RETURN_POSITION)
+    // Back to the wider island bounds mid-survival-run (so the cave/spring
+    // stay reachable), otherwise the usual narrow dock/pier strip.
+    player.setMode(survival.active ? 'island' : 'dock', PIER_RETURN_POSITION)
     hud.hideInteractPrompt()
   }
 
-  function updateInteractPrompt() {
-    if (player.mode === 'dock') {
-      const d = Math.hypot(camera.position.x - BOAT_DOCK_POSITION.x, camera.position.z - BOAT_DOCK_POSITION.z)
-      if (d < BOARD_RADIUS) {
-        hud.showInteractPrompt(touch ? '🚤 Naik Perahu' : 'Tekan E untuk naik perahu', boardBoat)
-        return
-      }
-    } else if (player.mode === 'boat') {
+  // ---- Survival camp (cave to sleep in, spring to drink from) -----------
+  const CAVE_RADIUS = 3
+  const SPRING_RADIUS = 2.4
+
+  function trySleep() {
+    if (!survival.active || !dayNight.isNight()) return
+    const isLastNight = survival.day >= SURVIVAL_TOTAL_DAYS
+    showSleepTransition(isLastNight ? 'Menuju pagi terakhir...' : `Hari ${survival.day + 1} dimulai`)
+    survival.sleep()
+    hud.hideInteractPrompt()
+    // Freeze movement for the brief fade so the player doesn't go wandering
+    // off mid-transition — released again once it fades back in.
+    player.setInputLocked(true)
+    setTimeout(() => {
+      hideSleepTransition()
+      player.setInputLocked(false)
+    }, 1300)
+  }
+
+  function tryDrink() {
+    if (!survival.active) return
+    if (survival.drink()) hud.showSurvivalToast('💧 Minum air segar (+40 Haus)')
+    else hud.showSurvivalToast('Belum haus lagi, tunggu sebentar...')
+  }
+
+  // Single source of truth for "what can E / the touch prompt do right
+  // now" — shared by updateInteractPrompt() (shows the prompt) and the E
+  // keydown handler below, so the proximity checks only live in one place.
+  function getNearestInteraction() {
+    if (player.mode === 'boat') {
       const d = Math.hypot(camera.position.x - PIER_RETURN_POSITION.x, camera.position.z - PIER_RETURN_POSITION.z)
-      if (d < DISEMBARK_RADIUS) {
-        hud.showInteractPrompt(touch ? '🚶 Turun dari Perahu' : 'Tekan E untuk turun dari perahu', disembark)
-        return
+      if (d < DISEMBARK_RADIUS) return { label: touch ? '🚶 Turun dari Perahu' : 'Tekan E untuk turun dari perahu', action: disembark }
+      return null
+    }
+    const dBoat = Math.hypot(camera.position.x - BOAT_DOCK_POSITION.x, camera.position.z - BOAT_DOCK_POSITION.z)
+    if (dBoat < BOARD_RADIUS) return { label: touch ? '🚤 Naik Perahu' : 'Tekan E untuk naik perahu', action: boardBoat }
+    if (survival.active && player.mode === 'island') {
+      const dCave = Math.hypot(camera.position.x - SURVIVAL_CAVE_POSITION.x, camera.position.z - SURVIVAL_CAVE_POSITION.z)
+      if (dCave < CAVE_RADIUS && dayNight.isNight()) {
+        return { label: touch ? '💤 Tidur di Gua' : 'Tekan E untuk tidur di gua', action: trySleep }
+      }
+      const dSpring = Math.hypot(camera.position.x - SURVIVAL_SPRING_POSITION.x, camera.position.z - SURVIVAL_SPRING_POSITION.z)
+      if (dSpring < SPRING_RADIUS) {
+        return { label: touch ? '💧 Minum Air' : 'Tekan E untuk minum air', action: tryDrink }
       }
     }
-    hud.hideInteractPrompt()
+    return null
+  }
+
+  function updateInteractPrompt() {
+    const interaction = getNearestInteraction()
+    if (interaction) hud.showInteractPrompt(interaction.label, interaction.action)
+    else hud.hideInteractPrompt()
   }
 
   if (!touch) {
     window.addEventListener('keydown', (e) => {
       if (e.code !== 'KeyE' || paused) return
-      if (player.mode === 'dock') boardBoat()
-      else disembark()
+      getNearestInteraction()?.action()
     })
     window.addEventListener('keydown', (e) => {
       if (e.code !== 'KeyQ') return
@@ -336,32 +384,46 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
     getZone: getFishingZone,
     getExtraBiteSpeedBonus: () => dayNight.getRainBiteBonus(),
     getExtraLegendaryBonus: () => dayNight.getNightLegendaryBonus(),
+    // Survival catches feed Hunger instead of the "Dapat X! +N poin" line —
+    // see game/survival.js's foodValueFor.
+    getCatchStatusText: (fish) => {
+      if (!survival.active) return null
+      const amount = foodValueFor(fish)
+      return amount > 0 ? `🍖 Dimakan: ${fish.name} (+${amount} Lapar)` : `${fish.name} bukan makanan...`
+    },
     onCatch: (fish) => {
       recordCatch(fish.id, fish.weight)
       if (session?.user) {
         addInventoryItem(session.user.id, fish.id, fish.weight).catch(() => {})
       }
-      if (!fish.junk) {
-        totalPoints += fish.points
-        wallet += fish.points
-        const prevLevel = getLevelInfo(totalPoints - fish.points).level
-        const newLevel = getLevelInfo(totalPoints).level
-        hud.setScore(wallet)
-        hud.setLevel(newLevel)
-        if (newLevel > prevLevel) hud.showLevelUp(newLevel)
-        persistPoints()
+      if (survival.active) {
+        // Survival is about staying alive, not the points economy — catches
+        // here restore Hunger only, never wallet/points/match registration.
+        const foodAmount = survival.feed(fish)
+        hud.showCatch(fish, { foodAmount })
+      } else {
+        if (!fish.junk) {
+          totalPoints += fish.points
+          wallet += fish.points
+          const prevLevel = getLevelInfo(totalPoints - fish.points).level
+          const newLevel = getLevelInfo(totalPoints).level
+          hud.setScore(wallet)
+          hud.setLevel(newLevel)
+          if (newLevel > prevLevel) hud.showLevelUp(newLevel)
+          persistPoints()
+        }
+        multiplayer.registerCatch(fish)
+        // NOTE: this used to force-exit pointer lock here so the (now
+        // disabled) share button on the catch popup would be clickable. With
+        // sharing off there's nothing on the popup to click, and releasing
+        // the lock was actually a bug on desktop: the player would land back
+        // in "free cursor" mode with no obvious way back in (clicking the
+        // canvas to re-lock could also get eaten as a stray cast attempt),
+        // making it look like fishing was broken. Just leave the lock alone
+        // now — the catch popup is purely a toast, no interaction needed.
+        hud.showCatch(fish)
       }
       checkAchievements()
-      multiplayer.registerCatch(fish)
-      // NOTE: this used to force-exit pointer lock here so the (now
-      // disabled) share button on the catch popup would be clickable. With
-      // sharing off there's nothing on the popup to click, and releasing
-      // the lock was actually a bug on desktop: the player would land back
-      // in "free cursor" mode with no obvious way back in (clicking the
-      // canvas to re-lock could also get eaten as a stray cast attempt),
-      // making it look like fishing was broken. Just leave the lock alone
-      // now — the catch popup is purely a toast, no interaction needed.
-      hud.showCatch(fish)
     },
     onMiss: () => {},
   })
@@ -407,6 +469,12 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
     multiplayer,
     onInviteFriend: (friendId, code) =>
       sendChat({ fromId: identityId, fromName: username, toId: friendId, text: `Ayo gabung room ${code}!`, invite: { code } }),
+    survival,
+    onStartSurvival: () => startSurvival(),
+    onLeaveSurvival: () => {
+      hud.hideSurvivalHud()
+      player.setMode('dock', PIER_RETURN_POSITION)
+    },
   })
 
   // Shared by "▶ Main" (single player) and the multiplayer countdown
@@ -428,6 +496,36 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
     pauseMenu.open()
     hud.hideInteractPrompt()
     if (document.pointerLockElement === renderer.domElement) document.exitPointerLock()
+  }
+
+  // ---- Survival event wiring (Sub-tahap Survival-A) ----------------------
+  function startSurvival() {
+    survival.start()
+    player.setMode('island', SURVIVAL_SPAWN_POSITION)
+    hud.showSurvivalHud()
+    hud.updateSurvivalStats(survival.snapshot())
+    enterGame()
+  }
+
+  survival.onStatChange = (snapshot) => hud.updateSurvivalStats(snapshot)
+  survival.onDayChange = (day, missedSleep) => {
+    if (missedSleep) hud.showSurvivalToast(`☀️ Fajar tiba, kamu begadang semalaman... Stamina berkurang! Hari ${day} dimulai.`)
+  }
+  survival.onGameOver = ({ reason, day, isNewRecord, bestDay }) => {
+    hud.hideSurvivalHud()
+    openPause()
+    showSurvivalEnd(
+      { outcome: 'lose', reason, day, totalDays: SURVIVAL_TOTAL_DAYS, bestDay, isNewRecord },
+      { onClose: () => player.setMode('dock', PIER_RETURN_POSITION) }
+    )
+  }
+  survival.onWin = ({ day, isNewRecord, bestDay }) => {
+    hud.hideSurvivalHud()
+    openPause()
+    showSurvivalEnd(
+      { outcome: 'win', day, totalDays: SURVIVAL_TOTAL_DAYS, bestDay, isNewRecord },
+      { onClose: () => player.setMode('dock', PIER_RETURN_POSITION) }
+    )
   }
 
   // ---- Multiplayer event wiring ----------------------------------------
@@ -554,6 +652,7 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
       player.update(dt, 1, water, elapsed)
       fishing.update(dt, elapsed)
       dayNight.update(dt)
+      survival.tick(dt)
       updateInteractPrompt()
     }
     // Remote-player interpolation and the match clock keep running in real
