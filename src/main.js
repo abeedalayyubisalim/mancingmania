@@ -9,7 +9,8 @@ import {
   OPEN_SEA_RADIUS,
   DEFAULT_BOAT_COLOR,
   SURVIVAL_CAVE_POSITION,
-  SURVIVAL_SPRING_POSITION,
+  SURVIVAL_LAKE_POSITION,
+  SURVIVAL_RIVER_POSITION,
   SURVIVAL_SPAWN_POSITION,
 } from './game/scene.js'
 import { Water } from './game/water.js'
@@ -291,9 +292,11 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
     hud.hideInteractPrompt()
   }
 
-  // ---- Survival camp (cave to sleep in, spring to drink from) -----------
+  // ---- Survival camp (cave to sleep in, river/lake to drink from & fish
+  // for freshwater species — Sub-tahap Survival-B) -------------------------
   const CAVE_RADIUS = 3
-  const SPRING_RADIUS = 2.4
+  const LAKE_RADIUS = 5.5
+  const RIVER_RADIUS = 4.5
 
   function trySleep() {
     if (!survival.active || !dayNight.isNight()) return
@@ -332,9 +335,13 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
       if (dCave < CAVE_RADIUS && dayNight.isNight()) {
         return { label: touch ? '💤 Tidur di Gua' : 'Tekan E untuk tidur di gua', action: trySleep }
       }
-      const dSpring = Math.hypot(camera.position.x - SURVIVAL_SPRING_POSITION.x, camera.position.z - SURVIVAL_SPRING_POSITION.z)
-      if (dSpring < SPRING_RADIUS) {
-        return { label: touch ? '💧 Minum Air' : 'Tekan E untuk minum air', action: tryDrink }
+      const dLake = Math.hypot(camera.position.x - SURVIVAL_LAKE_POSITION.x, camera.position.z - SURVIVAL_LAKE_POSITION.z)
+      if (dLake < LAKE_RADIUS) {
+        return { label: touch ? '💧 Minum di Danau' : 'Tekan E untuk minum di danau', action: tryDrink }
+      }
+      const dRiver = Math.hypot(camera.position.x - SURVIVAL_RIVER_POSITION.x, camera.position.z - SURVIVAL_RIVER_POSITION.z)
+      if (dRiver < RIVER_RADIUS) {
+        return { label: touch ? '💧 Minum di Sungai' : 'Tekan E untuk minum di sungai', action: tryDrink }
       }
     }
     return null
@@ -369,9 +376,35 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
   }
 
   function getFishingZone() {
+    if (survival.active) {
+      // Sub-tahap Survival-B: fishing near the river/lake favors the
+      // freshwater species (nila/mujair/lele/gurame) over the usual
+      // saltwater pool — see fish-data.js's rollFish.
+      const dLake = Math.hypot(camera.position.x - SURVIVAL_LAKE_POSITION.x, camera.position.z - SURVIVAL_LAKE_POSITION.z)
+      if (dLake < LAKE_RADIUS) return { freshwater: true, spot: 'lake' }
+      const dRiver = Math.hypot(camera.position.x - SURVIVAL_RIVER_POSITION.x, camera.position.z - SURVIVAL_RIVER_POSITION.z)
+      if (dRiver < RIVER_RADIUS) return { freshwater: true, spot: 'river' }
+      return { freshwater: false, spot: 'sea' }
+    }
     const dist = Math.hypot(camera.position.x, camera.position.z)
     const deepSea = player.mode === 'boat' && dist > OPEN_SEA_RADIUS
     return { deepSea, deepSeaBonus: deepSea ? 0.5 : 0 }
+  }
+
+  // A quick one-time toast the moment you wander into fishing range of the
+  // river or lake during Survival, so it's clear those spots fish
+  // differently from the open sea — not spammed every frame.
+  let lastSurvivalSpot = null
+  function updateSurvivalZoneHint() {
+    if (!survival.active) {
+      lastSurvivalSpot = null
+      return
+    }
+    const { spot } = getFishingZone()
+    if (spot === lastSurvivalSpot) return
+    lastSurvivalSpot = spot
+    if (spot === 'lake') hud.showSurvivalToast('🏞️ Danau — ikan air tawar lebih sering muncul di sini.')
+    else if (spot === 'river') hud.showSurvivalToast('🏞️ Sungai — ikan air tawar lebih sering muncul di sini.')
   }
 
   const fishing = new Fishing({
@@ -654,6 +687,7 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
       dayNight.update(dt)
       survival.tick(dt)
       updateInteractPrompt()
+      updateSurvivalZoneHint()
     }
     // Remote-player interpolation and the match clock keep running in real
     // time even while paused (same as it would for everyone else in the

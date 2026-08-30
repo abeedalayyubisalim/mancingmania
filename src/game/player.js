@@ -2,15 +2,21 @@ import * as THREE from 'three'
 import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js'
 import { settings } from '../settings.js'
 import { getSkinColor } from '../store.js'
+import { SURVIVAL_ISLAND_CENTER } from './scene.js'
 
 // Bounds the player is allowed to walk within (the dock platform + pier).
 const DOCK_BOUNDS = { minX: -2.6, maxX: 2.6, minZ: 2, maxZ: 24.5 }
 // Once aboard the boat, the whole (large) water plane is navigable.
 const BOAT_BOUNDS = { minX: -185, maxX: 185, minZ: -185, maxZ: 185 }
-// Survival mode roams the whole home island (dock/pier included) so the
-// player can reach the cave and freshwater spring on its far side — see
-// game/scene.js's SURVIVAL_CAVE_POSITION/SURVIVAL_SPRING_POSITION.
-const ISLAND_BOUNDS = { minX: -6.5, maxX: 6.5, minZ: -4.5, maxZ: 24.5 }
+// Survival mode roams the whole (much bigger, Sub-tahap Survival-B) survival
+// island — forest, mountain, river and lake all included — so every biome
+// piece built in game/scene.js's buildSurvivalIsland() stays reachable.
+const ISLAND_BOUNDS = {
+  minX: SURVIVAL_ISLAND_CENTER.x - 26,
+  maxX: SURVIVAL_ISLAND_CENTER.x + 24,
+  minZ: SURVIVAL_ISLAND_CENTER.z - 34,
+  maxZ: SURVIVAL_ISLAND_CENTER.z + 26,
+}
 const EYE_HEIGHT = 1.7
 const BOAT_EYE_HEIGHT = 1.5
 // The rod shaft's built-in color, absent any purchased skin.

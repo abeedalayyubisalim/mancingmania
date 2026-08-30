@@ -74,6 +74,7 @@ export const FISH_TYPES = [
     color: 0x6b8f6a,
     size: 0.55,
     rarityBias: 0,
+    freshwater: true,
     latin: 'Oreochromis niloticus',
     habitat:
       'Sungai, danau, dan waduk air tawar tropis. Aslinya dari Afrika, kini tersebar luas lewat budidaya termasuk di Indonesia.',
@@ -92,6 +93,7 @@ export const FISH_TYPES = [
     color: 0x8a9a5b,
     size: 0.5,
     rarityBias: 0,
+    freshwater: true,
     latin: 'Oreochromis mossambicus',
     habitat: 'Air tawar & payau. Dibawa ke Indonesia tahun 1939 dan langsung menyebar cepat di banyak perairan.',
     sizeInfo: 'Umumnya 15-25 cm.',
@@ -109,6 +111,7 @@ export const FISH_TYPES = [
     color: 0x3a3a3a,
     size: 0.75,
     rarityBias: -0.05,
+    freshwater: true,
     latin: 'Clarias sp.',
     habitat: 'Sungai, kolam, dan rawa berlumpur air tawar tropis di Asia & Afrika.',
     sizeInfo: 'Umumnya 20-40 cm, bisa lebih besar di alam liar.',
@@ -178,6 +181,7 @@ export const FISH_TYPES = [
     color: 0x8fae7a,
     size: 0.75,
     rarityBias: 0.1,
+    freshwater: true,
     latin: 'Osphronemus goramy',
     habitat: 'Sungai & rawa air tawar tenang di Asia Tenggara, juga banyak dibudidayakan di kolam.',
     sizeInfo: 'Umumnya 25-45 cm, bisa tumbuh lebih dari 60 cm.',
@@ -384,16 +388,23 @@ export const FISH_TYPES = [
 // stronger casts. `rareBonus` and `legendaryBonus` come from equipped store
 // items (hooks/nets) and add extra weight to rare-tier and legendary fish
 // respectively, on top of the cast-power bias. `zone` (from the day/night
-// cycle + player's boat/dock position) can additionally unlock deep-sea-only
-// species and give them a further boost.
+// cycle + player's boat/dock position, or Survival's river/lake proximity —
+// see main.js's getFishingZone) can additionally unlock deep-sea-only
+// species and give them a further boost, or (Sub-tahap Survival-B) bias
+// toward the freshwater-appropriate species (nila/mujair/lele/gurame) when
+// fishing a river or lake instead of the sea.
 export function rollFish(castPower, rareBonus = 0, legendaryBonus = 0, zone = {}) {
-  const { deepSea = false, deepSeaBonus = 0 } = zone
+  const { deepSea = false, deepSeaBonus = 0, freshwater = false } = zone
   const pool = FISH_TYPES.filter((f) => !f.deepSeaOnly || deepSea)
   const weighted = pool.map((f) => {
     let bonus = 1 + castPower * f.rarityBias * 4
     if (f.rarityBias > 0) bonus += rareBonus * f.rarityBias * 4
     if (f.legendary) bonus += legendaryBonus * 4
     if (deepSea && f.rarityBias > 0) bonus += deepSeaBonus * f.rarityBias * 4
+    // River/lake: freshwater species turn up a lot more; saltwater species
+    // (that aren't junk) still possible — you can always haul up an odd
+    // stray — but much rarer.
+    if (freshwater) bonus *= f.freshwater ? 3.5 : f.junk ? 1 : 0.3
     return { fish: f, w: Math.max(0.001, f.spawnWeight * bonus) }
   })
   const total = weighted.reduce((s, x) => s + x.w, 0)

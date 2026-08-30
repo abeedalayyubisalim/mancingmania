@@ -105,7 +105,73 @@ function buildCave(x, z) {
   return group
 }
 
-function buildSpring(x, z) {
+// Sub-tahap Survival-B — the bigger, biome-varied survival island. Trees,
+// mountain and river are purely decorative low-poly primitives (see
+// player.js's ISLAND_BOUNDS — there's no real terrain collision in this
+// game, movement is just a rectangular cage), while the lake/river/cave
+// positions exported below double as proximity zones main.js checks for
+// drinking + freshwater-biased fishing (see fish-data.js's rollFish zone).
+
+function buildMountain(x, z) {
+  const group = new THREE.Group()
+  const rockMat = new THREE.MeshStandardMaterial({ color: 0x8a8578, flatShading: true })
+  const rockMat2 = new THREE.MeshStandardMaterial({ color: 0x716c60, flatShading: true })
+  const snowMat = new THREE.MeshStandardMaterial({ color: 0xf1f1f6, flatShading: true })
+
+  const base = new THREE.Mesh(new THREE.ConeGeometry(10, 11, 8), rockMat)
+  base.position.set(0, 5, 0)
+  base.castShadow = true
+  base.receiveShadow = true
+  group.add(base)
+
+  const mid = new THREE.Mesh(new THREE.ConeGeometry(6, 6.5, 8), rockMat2)
+  mid.position.set(0.6, 10, -0.6)
+  mid.castShadow = true
+  group.add(mid)
+
+  const peak = new THREE.Mesh(new THREE.ConeGeometry(2.6, 3.8, 8), snowMat)
+  peak.position.set(0.6, 14, -0.6)
+  peak.castShadow = true
+  group.add(peak)
+
+  for (let i = 0; i < 6; i++) {
+    const a = Math.random() * Math.PI * 2
+    const r = 8.5 + Math.random() * 3.5
+    group.add(lowPolyRock(Math.cos(a) * r, Math.sin(a) * r, 0.6 + Math.random() * 0.5))
+  }
+
+  group.position.set(x, 0, z)
+  return group
+}
+
+function buildForest(x, z) {
+  const group = new THREE.Group()
+  const undergrowthMat = new THREE.MeshStandardMaterial({ color: 0x3c7a42, flatShading: true })
+
+  for (let i = 0; i < 16; i++) {
+    const dx = (Math.random() - 0.5) * 20
+    const dz = (Math.random() - 0.5) * 20
+    group.add(lowPolyTree(dx, dz))
+  }
+  for (let i = 0; i < 6; i++) {
+    const dx = (Math.random() - 0.5) * 20
+    const dz = (Math.random() - 0.5) * 20
+    const bush = new THREE.Mesh(new THREE.DodecahedronGeometry(0.5 + Math.random() * 0.3, 0), undergrowthMat)
+    bush.position.set(dx, 0.3, dz)
+    bush.castShadow = true
+    group.add(bush)
+  }
+  for (let i = 0; i < 4; i++) {
+    const dx = (Math.random() - 0.5) * 20
+    const dz = (Math.random() - 0.5) * 20
+    group.add(lowPolyRock(dx, dz, 0.35 + Math.random() * 0.4))
+  }
+
+  group.position.set(x, 0, z)
+  return group
+}
+
+function buildLake(x, z, radius = 4.5) {
   const group = new THREE.Group()
   const poolMat = new THREE.MeshStandardMaterial({
     color: 0x4fb0d8,
@@ -114,20 +180,113 @@ function buildSpring(x, z) {
     transparent: true,
     opacity: 0.9,
   })
-  const pool = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.15, 0.1, 14), poolMat)
-  pool.position.set(0, 0.06, 0)
+  const bankMat = new THREE.MeshStandardMaterial({ color: 0x6b8f5a, flatShading: true })
+
+  const bank = new THREE.Mesh(new THREE.CylinderGeometry(radius * 1.3, radius * 1.4, 0.24, 20), bankMat)
+  bank.position.set(0, -0.02, 0)
+  bank.receiveShadow = true
+  group.add(bank)
+
+  const pool = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, 0.12, 20), poolMat)
+  pool.position.set(0, 0.08, 0)
   group.add(pool)
 
-  for (const [dx, dz, s] of [
-    [-1.1, -0.4, 0.45],
-    [1.0, -0.6, 0.4],
-    [0.3, 1.1, 0.5],
-    [-0.7, 0.9, 0.35],
-  ]) {
-    group.add(lowPolyRock(dx, dz, s))
+  for (let i = 0; i < 7; i++) {
+    const a = Math.random() * Math.PI * 2
+    const r = radius * (1.05 + Math.random() * 0.35)
+    group.add(lowPolyRock(Math.cos(a) * r, Math.sin(a) * r, 0.35 + Math.random() * 0.4))
   }
 
   group.position.set(x, 0, z)
+  return group
+}
+
+// A winding ribbon of flattened "water" boxes strung between waypoints
+// (island-local x/z pairs) — cheap stand-in for a proper river mesh, in
+// the same flat-shaded primitive style as everything else here.
+function buildRiver(points, width = 2.4) {
+  const group = new THREE.Group()
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x4fb0d8,
+    flatShading: true,
+    roughness: 0.4,
+    transparent: true,
+    opacity: 0.88,
+  })
+  const bankMat = new THREE.MeshStandardMaterial({ color: 0x6b8f5a, flatShading: true })
+
+  for (let i = 0; i < points.length - 1; i++) {
+    const [x1, z1] = points[i]
+    const [x2, z2] = points[i + 1]
+    const dx = x2 - x1
+    const dz = z2 - z1
+    const len = Math.hypot(dx, dz)
+    const angle = Math.atan2(dx, dz)
+
+    const bank = new THREE.Mesh(new THREE.BoxGeometry(width + 1.3, 0.08, len + 0.6), bankMat)
+    bank.position.set((x1 + x2) / 2, -0.02, (z1 + z2) / 2)
+    bank.rotation.y = angle
+    group.add(bank)
+
+    const seg = new THREE.Mesh(new THREE.BoxGeometry(width, 0.1, len + 0.6), mat)
+    seg.position.set((x1 + x2) / 2, 0.06, (z1 + z2) / 2)
+    seg.rotation.y = angle
+    group.add(seg)
+  }
+
+  for (const [x, z] of points) {
+    if (Math.random() < 0.7) {
+      group.add(lowPolyRock(x + (Math.random() - 0.5) * width * 2, z + (Math.random() - 0.5) * 2, 0.3 + Math.random() * 0.35))
+    }
+  }
+
+  return group
+}
+
+// The island itself: a bigger, differently-shaped landmass than the round
+// home island, plus every biome piece above assembled onto it. Sits far
+// out in open water (see SURVIVAL_ISLAND_CENTER) so it never crowds the
+// normal dock/boat scenery.
+function buildSurvivalIsland(center) {
+  const group = new THREE.Group()
+
+  const sandMat = new THREE.MeshStandardMaterial({ color: 0xdec27a, flatShading: true })
+  const grassMat = new THREE.MeshStandardMaterial({ color: 0x4a9d4f, flatShading: true })
+  const hillMat = new THREE.MeshStandardMaterial({ color: 0x357a3a, flatShading: true })
+
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(24, 27, 1.4, 18), sandMat)
+  base.scale.set(1, 1, 1.4)
+  base.position.y = -0.5
+  base.receiveShadow = true
+  group.add(base)
+
+  const grass = new THREE.Mesh(new THREE.CylinderGeometry(20, 23, 0.6, 18), grassMat)
+  grass.scale.set(1, 1, 1.4)
+  grass.position.set(0, 0.2, -3)
+  grass.receiveShadow = true
+  group.add(grass)
+
+  // Rising foothill toward the mountain at the north end, so the terrain
+  // isn't perfectly flat everywhere.
+  const foothill = new THREE.Mesh(new THREE.CylinderGeometry(13, 17, 2.6, 14), hillMat)
+  foothill.position.set(1, 0.7, -20)
+  foothill.receiveShadow = true
+  foothill.castShadow = true
+  group.add(foothill)
+
+  group.add(buildMountain(0, -26))
+  group.add(buildCave(2, -15))
+  group.add(buildForest(-16, 2))
+  group.add(buildLake(16, 5))
+  group.add(buildRiver([[3, -18], [5, -8], [2, 2], [4, 12], [3, 21]]))
+
+  for (let i = 0; i < 6; i++) {
+    const a = Math.random() * Math.PI * 2
+    const r = 18 + Math.random() * 5
+    group.add(lowPolyRock(Math.cos(a) * r, 16 + Math.sin(a) * 5, 0.4 + Math.random() * 0.5))
+  }
+
+  group.position.set(center.x, 0, center.z)
   return group
 }
 
@@ -215,9 +374,11 @@ export function buildEnvironment(scene) {
   const homeIsland = island(0, 3, 7, { avoidAngleRange: [0.3, Math.PI - 0.3] })
   scene.add(homeIsland)
 
-  // Survival camp — south/west side of the same island, away from the dock.
-  scene.add(buildCave(SURVIVAL_CAVE_POSITION.x, SURVIVAL_CAVE_POSITION.z))
-  scene.add(buildSpring(SURVIVAL_SPRING_POSITION.x, SURVIVAL_SPRING_POSITION.z))
+  // Survival island (Sub-tahap Survival-B) — a separate, bigger, biome-
+  // varied landmass out in open water. Not connected to the dock at all;
+  // Survival mode teleports the player straight there (see main.js's
+  // startSurvival()).
+  scene.add(buildSurvivalIsland(SURVIVAL_ISLAND_CENTER))
 
   // A scattering of distant islands + rocks for horizon interest.
   const decor = new THREE.Group()
@@ -243,12 +404,18 @@ export const BOAT_DOCK_POSITION = { x: 2.6, z: 24 }
 // Where the player ends up back on the pier after disembarking.
 export const PIER_RETURN_POSITION = { x: 0, z: 20 }
 
-// Survival camp (Sub-tahap Survival-A) — see buildCave/buildSpring above.
-export const SURVIVAL_CAVE_POSITION = { x: 0, z: -2 }
-export const SURVIVAL_SPRING_POSITION = { x: -5, z: 2 }
-// Where a stranded player starts out — on the sand, facing the island
-// rather than straight out to open water.
-export const SURVIVAL_SPAWN_POSITION = { x: 2, z: 4 }
+// Survival island (Sub-tahap Survival-B) — a bigger, separate landmass out
+// in open water (see buildSurvivalIsland above), well clear of the home
+// island/dock and the scattered horizon-decor islands below.
+export const SURVIVAL_ISLAND_CENTER = { x: -95, z: -95 }
+// Each of these is island-LOCAL offset + SURVIVAL_ISLAND_CENTER, matching
+// where buildSurvivalIsland actually placed that feature.
+export const SURVIVAL_CAVE_POSITION = { x: SURVIVAL_ISLAND_CENTER.x + 2, z: SURVIVAL_ISLAND_CENTER.z - 15 }
+export const SURVIVAL_LAKE_POSITION = { x: SURVIVAL_ISLAND_CENTER.x + 16, z: SURVIVAL_ISLAND_CENTER.z + 5 }
+export const SURVIVAL_RIVER_POSITION = { x: SURVIVAL_ISLAND_CENTER.x + 3, z: SURVIVAL_ISLAND_CENTER.z + 7 }
+// Where a stranded player starts out — on the south beach, facing inland
+// toward the forest/river/mountain rather than straight out to open water.
+export const SURVIVAL_SPAWN_POSITION = { x: SURVIVAL_ISLAND_CENTER.x, z: SURVIVAL_ISLAND_CENTER.z + 20 }
 // Beyond this distance from the home island, the water counts as "open
 // sea" — better odds at rare fish, and a couple of species that only turn
 // up out there.
