@@ -1,7 +1,7 @@
 import { isTouchDevice } from './settings.js'
 import { openShareCard } from './share-card.js'
 import { playUIClick } from './audio.js'
-import { EMOTES } from './social.js'
+import { EMOTES, isOnline } from './social.js'
 
 // Temporarily disabled — a player reported the share flow being buggy.
 // Keeping the code path intact (just gated off) so it's a one-line flip to
@@ -41,17 +41,31 @@ export class Hud {
         <div id="catch-points"></div>
         <button id="catch-share-btn" class="hidden">📤 Bagikan</button>
       </div>
-      <button id="leaderboard-toggle" title="Papan Skor">🏆</button>
-      <div id="leaderboard-panel" class="hidden">
-        <h3>Papan Skor Teratas <span id="online-count-badge"></span></h3>
-        <ol id="leaderboard-list"></ol>
-        <button id="leaderboard-close">Tutup</button>
+      <button id="chat-toggle" title="Chat">💬</button>
+      <div id="chat-panel" class="hidden">
+        <div id="chat-header">
+          <div id="chat-tabs">
+            <button class="chat-tab active" data-tab="global">🌐 Global</button>
+            <button class="chat-tab" data-tab="friends">🧑‍🤝‍🧑 Teman</button>
+          </div>
+          <button id="chat-close" title="Tutup">✕</button>
+        </div>
+        <div id="chat-friend-list" class="hidden"></div>
+        <div id="chat-thread">
+          <div id="chat-thread-header" class="hidden">
+            <button id="chat-thread-back">← Teman</button>
+            <span id="chat-thread-name"></span>
+          </div>
+          <div id="chat-messages"></div>
+          <div id="chat-quick-row">
+            ${EMOTES.map((e) => `<button class="chat-quick-emote" data-emoji="${e.emoji}" title="${escapeHtml(e.label)}">${e.emoji}</button>`).join('')}
+          </div>
+          <form id="chat-form">
+            <input id="chat-input" type="text" maxlength="140" placeholder="Ketik pesan..." autocomplete="off" />
+            <button type="submit">Kirim</button>
+          </form>
+        </div>
       </div>
-      <button id="emote-toggle" title="Emote">😀</button>
-      <div id="emote-panel" class="hidden">
-        ${EMOTES.map((e) => `<button class="emote-option" data-emote="${e.id}" title="${escapeHtml(e.label)}">${e.emoji}</button>`).join('')}
-      </div>
-      <div id="emote-toast" class="hidden"></div>
       <div id="controls-hint">
         ${
           isTouchDevice()
@@ -79,39 +93,70 @@ export class Hud {
     this.catchTitle = root.querySelector('#catch-title')
     this.catchPoints = root.querySelector('#catch-points')
     this.shareBtn = root.querySelector('#catch-share-btn')
-    this.leaderboardPanel = root.querySelector('#leaderboard-panel')
-    this.leaderboardList = root.querySelector('#leaderboard-list')
     this.syncStatusEl = root.querySelector('#sync-status')
     this.achievementToast = root.querySelector('#achievement-toast')
     this.timeWeatherEl = root.querySelector('#time-weather-box')
     this.interactPrompt = root.querySelector('#interact-prompt')
-    this.onlineCountBadge = root.querySelector('#online-count-badge')
-    this.emotePanel = root.querySelector('#emote-panel')
-    this.emoteToast = root.querySelector('#emote-toast')
 
-    root.querySelector('#leaderboard-toggle').addEventListener('click', () => {
-      playUIClick()
-      this.toggleLeaderboard()
-    })
-    root.querySelector('#leaderboard-close').addEventListener('click', () => {
-      playUIClick()
-      this.toggleLeaderboard(false)
-    })
+    // ---- Chat --------------------------------------------------------
+    this.chatPanel = root.querySelector('#chat-panel')
+    this.chatFriendList = root.querySelector('#chat-friend-list')
+    this.chatThread = root.querySelector('#chat-thread')
+    this.chatThreadHeader = root.querySelector('#chat-thread-header')
+    this.chatThreadName = root.querySelector('#chat-thread-name')
+    this.chatMessagesEl = root.querySelector('#chat-messages')
+    this.chatInput = root.querySelector('#chat-input')
+    // Ephemeral only — chat rides the same live/no-history realtime
+    // channel as presence, so nothing here survives a reload. {global:[],
+    // dm: { [friendId]: [] }}
+    this._chatLog = { global: [], dm: {} }
+    this._chatTab = 'global' // 'global' | 'friends'
+    this._chatFriendId = null
+    this._chatFriendName = null
+    this._identity = null // { id, username, avatar } — set via setIdentity()
+
     this.interactPrompt.addEventListener('click', () => {
       playUIClick()
       this._interactHandler?.()
     })
-    root.querySelector('#emote-toggle').addEventListener('click', () => {
+    root.querySelector('#chat-toggle').addEventListener('click', () => {
       playUIClick()
-      this.emotePanel.classList.toggle('hidden')
+      const willShow = this.chatPanel.classList.contains('hidden')
+      this.chatPanel.classList.toggle('hidden', !willShow)
+      if (willShow) this._renderChatTab()
     })
-    this.emotePanel.querySelectorAll('.emote-option').forEach((btn) => {
-      btn.addEventListener('click', () => {
+    root.querySelector('#chat-close').addEventListener('click', () => {
+      playUIClick()
+      this.chatPanel.classList.add('hidden')
+    })
+    root.querySelectorAll('.chat-tab').forEach((tab) => {
+      tab.addEventListener('click', () => {
         playUIClick()
-        this.emotePanel.classList.add('hidden')
-        this.onSendEmote?.(btn.dataset.emote)
+        this._chatTab = tab.dataset.tab
+        this._chatFriendId = null
+        root.querySelectorAll('.chat-tab').forEach((t) => t.classList.toggle('active', t === tab))
+        this._renderChatTab()
       })
     })
+    root.querySelector('#chat-thread-back').addEventListener('click', () => {
+      playUIClick()
+      this._chatFriendId = null
+      this._renderChatTab()
+    })
+    root.querySelectorAll('.chat-quick-emote').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        playUIClick()
+        this._sendChatText(btn.dataset.emoji)
+      })
+    })
+    root.querySelector('#chat-form').addEventListener('submit', (e) => {
+      e.preventDefault()
+      const text = this.chatInput.value.trim()
+      if (!text) return
+      this._sendChatText(text)
+      this.chatInput.value = ''
+    })
+
     if (SHARE_ENABLED) {
       this.shareBtn.addEventListener('click', () => {
         playUIClick()
@@ -226,37 +271,110 @@ export class Hud {
     this._interactHandler = null
   }
 
-  setOnlineCount(n) {
-    this.onlineCountBadge.textContent = n > 0 ? `· 🟢 ${n} online` : ''
+  // ---- Chat ----------------------------------------------------------
+  // `identity` = { id, username, avatar } for the local player — needed to
+  // tell "sent by me" apart from incoming messages, and as the `fromId`
+  // main.js's onSendChat wiring stamps outgoing messages with.
+  setIdentity(identity) {
+    this._identity = identity
   }
 
-  showEmoteToast({ username, avatar, emoteId }) {
-    const emote = EMOTES.find((e) => e.id === emoteId)
-    if (!emote) return
+  _sendChatText(text) {
+    if (!text.trim()) return
+    if (this._chatTab === 'friends' && !this._chatFriendId) return // no one picked yet
+    this.onSendChat?.({
+      toId: this._chatTab === 'friends' ? this._chatFriendId : null,
+      text: text.trim(),
+    })
+  }
+
+  // Called for every chat broadcast that comes back over the lobby channel
+  // (including our own — the channel is configured to echo to the sender
+  // too, so this is the single path that renders sent AND received
+  // messages, avoiding double-appending).
+  receiveChatMessage(payload) {
+    const mine = payload.fromId === this._identity?.id
+    const msg = { ...payload, mine }
+    if (!payload.toId) {
+      this._chatLog.global.push(msg)
+      // Full re-render (not just appending this one message) so the
+      // "belum ada pesan" placeholder gets cleared out on the very first
+      // message instead of lingering alongside real ones.
+      if (this._chatTab === 'global') this._renderMessageList(this._chatLog.global)
+    } else {
+      // The DM thread is keyed by "the other participant" regardless of
+      // who sent it, so both sides of a conversation land in the same list.
+      const otherId = mine ? payload.toId : payload.fromId
+      if (!this._chatLog.dm[otherId]) this._chatLog.dm[otherId] = []
+      this._chatLog.dm[otherId].push(msg)
+      if (this._chatTab === 'friends' && this._chatFriendId === otherId) {
+        this._renderMessageList(this._chatLog.dm[otherId])
+      }
+    }
+  }
+
+  _appendMessage(msg) {
     const el = document.createElement('div')
-    el.className = 'emote-toast-item'
-    el.innerHTML = `<span class="emote-toast-emoji">${emote.emoji}</span><span>${escapeHtml(avatar || '')} ${escapeHtml(username || 'Pemain')}</span>`
-    this.emoteToast.appendChild(el)
-    this.emoteToast.classList.remove('hidden')
-    setTimeout(() => {
-      el.remove()
-      if (!this.emoteToast.children.length) this.emoteToast.classList.add('hidden')
-    }, 3200)
+    el.className = `chat-msg ${msg.mine ? 'mine' : ''}`
+    el.innerHTML = `<span class="chat-msg-name">${escapeHtml(msg.mine ? 'Kamu' : msg.fromName || 'Pemain')}</span><span class="chat-msg-text">${escapeHtml(msg.text)}</span>`
+    this.chatMessagesEl.appendChild(el)
+    this.chatMessagesEl.scrollTop = this.chatMessagesEl.scrollHeight
   }
 
-  toggleLeaderboard(force) {
-    const show = force ?? this.leaderboardPanel.classList.contains('hidden')
-    this.leaderboardPanel.classList.toggle('hidden', !show)
-    if (show) this.onOpenLeaderboard?.()
+  async _renderChatTab() {
+    if (this._chatTab === 'global') {
+      this.chatFriendList.classList.add('hidden')
+      this.chatThread.classList.remove('hidden')
+      this.chatThreadHeader.classList.add('hidden')
+      this._renderMessageList(this._chatLog.global)
+      return
+    }
+    // Friends tab.
+    if (this._chatFriendId) {
+      this.chatFriendList.classList.add('hidden')
+      this.chatThread.classList.remove('hidden')
+      this.chatThreadHeader.classList.remove('hidden')
+      this.chatThreadName.textContent = this._chatFriendName ?? ''
+      this._renderMessageList(this._chatLog.dm[this._chatFriendId] ?? [])
+      return
+    }
+    // No friend picked yet — show the friend picker instead of a thread.
+    this.chatThread.classList.add('hidden')
+    this.chatFriendList.classList.remove('hidden')
+    if (!this._identity?.loggedIn) {
+      this.chatFriendList.innerHTML = '<p class="gallery-status">Main sebagai tamu gak punya daftar teman. Login dulu ya.</p>'
+      return
+    }
+    this.chatFriendList.innerHTML = '<p class="gallery-status">Memuat...</p>'
+    const friends = (await this.getFriends?.()) ?? []
+    this.chatFriendList.innerHTML = friends.length
+      ? friends
+          .map(
+            (f) =>
+              `<button class="chat-friend-row" data-id="${f.friend_id}" data-name="${escapeHtml(f.friend_name)}">
+                <span class="friend-online-dot ${isOnline(f.friend_id) ? 'online' : ''}"></span>
+                <span>${escapeHtml(f.friend_name)}</span>
+              </button>`
+          )
+          .join('')
+      : '<p class="gallery-status">Belum ada teman buat diajak chat. Tambahkan dari menu Teman dulu.</p>'
+    this.chatFriendList.querySelectorAll('.chat-friend-row').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        playUIClick()
+        this._chatFriendId = btn.dataset.id
+        this._chatFriendName = btn.dataset.name
+        this._renderChatTab()
+      })
+    })
   }
 
-  renderLeaderboard(rows, myUsername) {
-    this.leaderboardList.innerHTML = rows
-      .map(
-        (r, i) =>
-          `<li class="${r.username === myUsername ? 'me' : ''}"><span>${i + 1}. ${escapeHtml(r.username)}</span><span>${r.score}</span></li>`
-      )
-      .join('') || '<li>Belum ada skor.</li>'
+  _renderMessageList(list) {
+    this.chatMessagesEl.innerHTML = ''
+    if (!list.length) {
+      this.chatMessagesEl.innerHTML = '<p class="gallery-status">Belum ada pesan. Cuma kelihatan pemain yang online bareng kamu.</p>'
+      return
+    }
+    list.forEach((msg) => this._appendMessage(msg))
   }
 }
 

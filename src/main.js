@@ -13,7 +13,7 @@ import { Water } from './game/water.js'
 import { Player } from './game/player.js'
 import { Fishing } from './game/fishing.js'
 import { DayNightCycle } from './game/daynight.js'
-import { fetchProfile, syncPoints, updateAvatar, fetchLeaderboard, fetchInventory, addInventoryItem } from './supabase-client.js'
+import { fetchProfile, syncPoints, updateAvatar, fetchInventory, addInventoryItem, fetchFriends } from './supabase-client.js'
 import { PauseMenu } from './pause-menu.js'
 import { TouchControls } from './touch-controls.js'
 import { isTouchDevice } from './settings.js'
@@ -41,7 +41,7 @@ import {
 } from './daily-reward.js'
 import { hasSeenTutorial, showTutorial } from './tutorial.js'
 import { unlockAudio, playAchievement, playDailyReward } from './audio.js'
-import { connectLobby, sendEmote } from './social.js'
+import { connectLobby, sendChat } from './social.js'
 
 const app = document.querySelector('#app')
 
@@ -92,25 +92,17 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
   hud.setBadge(getCosmeticBadge())
   hud.setScore(wallet)
   hud.setLevel(getLevelInfo(totalPoints).level)
-  hud.onOpenLeaderboard = async () => {
-    const rows = await fetchLeaderboard(10)
-    hud.renderLeaderboard(rows, username)
-  }
-
-  // ---- Presence ("who's online") + emotes -------------------------------
+  // ---- Presence ("who's online") + live chat -----------------------------
   // Logged-in players use their stable auth id (so friends/leaderboard rows
   // can match them up as online); guests get a random per-session id, which
   // just means they show up as "online" without matching any specific
-  // profile row anywhere else.
+  // profile row anywhere else. (Papan Skor itself lives in the pause menu
+  // now — see pause-menu.js — not as a HUD quick-access button.)
   const identityId = session?.user?.id ?? crypto.randomUUID()
-  connectLobby(
-    { id: identityId, username, avatar },
-    {
-      onOnlineChange: (players) => hud.setOnlineCount(players.length),
-      onEmote: (payload) => hud.showEmoteToast(payload),
-    }
-  )
-  hud.onSendEmote = (emoteId) => sendEmote({ username, avatar, emoteId })
+  hud.setIdentity({ id: identityId, username, avatar, loggedIn: Boolean(session?.user) })
+  hud.getFriends = () => (session?.user ? fetchFriends(session.user.id) : Promise.resolve([]))
+  hud.onSendChat = ({ toId, text }) => sendChat({ fromId: identityId, fromName: username, toId, text })
+  connectLobby({ id: identityId, username, avatar }, { onChat: (payload) => hud.receiveChatMessage(payload) })
 
   // Persists points/wallet to Supabase (logged in) or this browser (guest)
   // whenever either one changes — catch, store purchase, achievement, or

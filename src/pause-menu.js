@@ -92,13 +92,15 @@ export class PauseMenu {
               : 'WASD buat jalan, mouse buat lihat sekitar, klik tahan-lepas buat mancing.'
           }</p>
           <button id="pause-resume" class="pause-btn primary">▶ Main</button>
-          <button id="pause-profile" class="pause-btn">👤 Profil</button>
-          <button id="pause-gallery" class="pause-btn">🐟 Koleksi Ikan</button>
-          <button id="pause-achievements" class="pause-btn">🏅 Pencapaian</button>
-          <button id="pause-store" class="pause-btn">🛒 Toko</button>
-          <button id="pause-friends" class="pause-btn">🧑‍🤝‍🧑 Teman</button>
-          <button id="pause-leaderboard" class="pause-btn">🏆 Papan Skor</button>
-          <button id="pause-settings" class="pause-btn">⚙️ Pengaturan</button>
+          <div class="menu-grid">
+            <button id="pause-profile" class="menu-tile"><span class="menu-tile-icon">👤</span><span class="menu-tile-label">Profil</span></button>
+            <button id="pause-gallery" class="menu-tile"><span class="menu-tile-icon">🐟</span><span class="menu-tile-label">Koleksi</span></button>
+            <button id="pause-achievements" class="menu-tile"><span class="menu-tile-icon">🏅</span><span class="menu-tile-label">Pencapaian</span></button>
+            <button id="pause-store" class="menu-tile"><span class="menu-tile-icon">🛒</span><span class="menu-tile-label">Toko</span></button>
+            <button id="pause-friends" class="menu-tile"><span class="menu-tile-icon">🧑‍🤝‍🧑</span><span class="menu-tile-label">Teman</span></button>
+            <button id="pause-leaderboard" class="menu-tile"><span class="menu-tile-icon">🏆</span><span class="menu-tile-label">Papan Skor</span></button>
+            <button id="pause-settings" class="menu-tile"><span class="menu-tile-icon">⚙️</span><span class="menu-tile-label">Pengaturan</span></button>
+          </div>
           <button id="pause-logout" class="pause-btn danger">🚪 Keluar</button>
         </div>
         <div id="pause-view-leaderboard" class="pause-view hidden">
