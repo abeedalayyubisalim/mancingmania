@@ -6,6 +6,10 @@
 //    "anon public" key into the two constants below.
 // 3. Run the SQL in supabase_schema.sql (Supabase dashboard -> SQL editor)
 //    to create the `leaderboard` table and its security policies.
+//
+// This project's `leaderboard` table uses these columns:
+//   id (text, the auth user's uuid stored as text), name (text),
+//   points (numeric), created_at (timestamptz)
 // ---------------------------------------------------------------------------
 import { createClient } from '@supabase/supabase-js'
 
@@ -39,7 +43,7 @@ export async function signUp(username, password) {
   // Seed a leaderboard row for this new user.
   if (data.user) {
     await supabase.from('leaderboard').upsert(
-      { id: data.user.id, username: username.trim(), score: 0 },
+      { id: data.user.id, name: username.trim(), points: 0 },
       { onConflict: 'id' }
     )
   }
@@ -76,14 +80,14 @@ export async function submitScore(userId, username, score) {
   if (!supabase) return
   const { data: existing } = await supabase
     .from('leaderboard')
-    .select('score')
+    .select('points')
     .eq('id', userId)
     .maybeSingle()
 
-  if (existing && existing.score >= score) return
+  if (existing && existing.points >= score) return
 
   await supabase.from('leaderboard').upsert(
-    { id: userId, username, score, updated_at: new Date().toISOString() },
+    { id: userId, name: username, points: score, created_at: new Date().toISOString() },
     { onConflict: 'id' }
   )
 }
@@ -92,9 +96,11 @@ export async function fetchLeaderboard(limit = 10) {
   if (!supabase) return []
   const { data, error } = await supabase
     .from('leaderboard')
-    .select('username, score')
-    .order('score', { ascending: false })
+    .select('name, points')
+    .order('points', { ascending: false })
     .limit(limit)
   if (error) return []
-  return data
+  // Normalize to {username, score} so the rest of the app doesn't need to
+  // know about this table's actual column names.
+  return data.map((row) => ({ username: row.name, score: row.points }))
 }
