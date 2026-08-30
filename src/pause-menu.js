@@ -63,6 +63,8 @@ export class PauseMenu {
       onStoreChange,
       onAvatarChange,
       getAchievementsState,
+      multiplayer,
+      onInviteFriend,
     }
   ) {
     this.onResume = onResume
@@ -77,6 +79,9 @@ export class PauseMenu {
     // Signed-in players get their collection from Supabase (synced across
     // devices); guests fall back to the local browser copy.
     this.userId = userId ?? null
+    this.multiplayer = multiplayer ?? null
+    this.onInviteFriend = onInviteFriend ?? null
+    this._mpInviteLoaded = false
     this.galleryData = null
     // Which view the fish/item detail popup's back button returns to —
     // it can be opened from the Koleksi Ikan gallery OR from a profile.
@@ -96,6 +101,7 @@ export class PauseMenu {
               : 'WASD buat jalan, mouse buat lihat sekitar, klik tahan-lepas buat mancing.'
           }</p>
           <button id="pause-play" class="pause-btn primary">▶ Main</button>
+          <button id="pause-leave-match" class="pause-btn danger hidden">🚪 Keluar dari Pertandingan</button>
           <div class="menu-grid">
             <button id="pause-profile" class="menu-tile"><span class="menu-tile-icon">👤</span><span class="menu-tile-label">Profil</span></button>
             <button id="pause-gallery" class="menu-tile"><span class="menu-tile-icon">🐟</span><span class="menu-tile-label">Koleksi</span></button>
@@ -130,6 +136,35 @@ export class PauseMenu {
             <span class="mtw-body"><b>Survival</b><span class="mtw-desc">Mode bertahan hidup — segera hadir.</span></span>
           </button>
           <button class="pause-btn back-btn" data-back="mode-select">← Kembali</button>
+        </div>
+        <div id="pause-view-mp-lobby" class="pause-view hidden">
+          <h3>🌐 Multiplayer</h3>
+          <button id="mp-create-btn" class="menu-tile-wide">
+            <span class="mtw-icon">➕</span>
+            <span class="mtw-body"><b>Buat Room</b><span class="mtw-desc">Jadi host, undang teman lewat chat atau bagikan kodenya.</span></span>
+          </button>
+          <div class="mp-join-row">
+            <input type="text" id="mp-join-input" placeholder="Kode room (mis. AB12C)" maxlength="6" />
+            <button id="mp-join-btn" class="pause-btn primary">Gabung</button>
+          </div>
+          <p id="mp-lobby-error" class="mp-lobby-error hidden"></p>
+          <button class="pause-btn back-btn" data-back="mode-select">← Kembali</button>
+        </div>
+        <div id="pause-view-mp-room" class="pause-view hidden">
+          <h3>Room <span id="mp-room-code"></span></h3>
+          <div id="mp-roster"></div>
+          <div id="mp-host-controls" class="hidden">
+            <h4>Pilih Mode</h4>
+            <div class="mp-mode-row">
+              <button class="mp-mode-btn" data-mode="time">⏱️ Mode Waktu</button>
+              <button class="mp-mode-btn" data-mode="fish">🎯 Mode Jenis Ikan</button>
+            </div>
+            <div id="mp-mode-params"></div>
+            <div id="mp-invite-list"></div>
+          </div>
+          <button id="mp-start-btn" class="pause-btn primary hidden" disabled>▶ Mulai</button>
+          <p id="mp-waiting-msg" class="gallery-status hidden">Menunggu host memilih mode &amp; memulai...</p>
+          <button id="mp-leave-btn" class="pause-btn danger">Keluar Room</button>
         </div>
         <div id="pause-view-coming-soon" class="pause-view hidden">
           <h3 id="coming-soon-title"></h3>
@@ -224,18 +259,40 @@ export class PauseMenu {
       friends: this.el.querySelector('#pause-view-friends'),
       'mode-select': this.el.querySelector('#pause-view-mode-select'),
       'singleplayer-select': this.el.querySelector('#pause-view-singleplayer-select'),
+      'mp-lobby': this.el.querySelector('#pause-view-mp-lobby'),
+      'mp-room': this.el.querySelector('#pause-view-mp-room'),
       'coming-soon': this.el.querySelector('#pause-view-coming-soon'),
     }
 
-    this.el.querySelector('#pause-play').addEventListener('click', () => this._showView('mode-select'))
+    this.el.querySelector('#pause-play').addEventListener('click', () => {
+      // Mid-match and just checking the pause menu (Esc) — "Main" should
+      // jump straight back into the game, not re-offer the mode picker.
+      if (this.multiplayer?.matchActive) this.onResume?.()
+      else this._showView('mode-select')
+    })
+    this.el.querySelector('#pause-leave-match').addEventListener('click', () => {
+      this.multiplayer?.leaveRoom()
+      this.el.querySelector('#pause-leave-match').classList.add('hidden')
+    })
     this.el.querySelector('#mode-singleplayer').addEventListener('click', () => this._showView('singleplayer-select'))
-    this.el.querySelector('#mode-multiplayer').addEventListener('click', () =>
-      this._showComingSoon(
-        '🌐 Multiplayer',
-        'Main bareng teman — bikin room, undang lewat chat, dan battle nangkap ikan bareng — lagi disiapkan. Sabar ya!',
-        'mode-select'
-      )
+    this.el.querySelector('#mode-multiplayer').addEventListener('click', () => {
+      if (this.multiplayer?.inRoom) this._showView('mp-room')
+      else this._showView('mp-lobby')
+    })
+    this.el.querySelector('#mp-create-btn').addEventListener('click', () => this._createRoom())
+    this.el.querySelector('#mp-join-btn').addEventListener('click', () => this._joinRoomByCode())
+    this.el.querySelector('#mp-join-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') this._joinRoomByCode()
+    })
+    this.el.querySelector('#mp-leave-btn').addEventListener('click', () => {
+      this.multiplayer?.leaveRoom()
+      this._showView('mp-lobby')
+    })
+    this.el.querySelector('#mp-start-btn').addEventListener('click', () => this.multiplayer?.startMatch())
+    this.el.querySelectorAll('.mp-mode-btn').forEach((btn) =>
+      btn.addEventListener('click', () => this._selectMpMode(btn.dataset.mode))
     )
+    if (this.multiplayer) this.multiplayer.onRoomChange = () => this._renderMpRoom()
     this.el.querySelector('#sp-normal').addEventListener('click', () => this.onResume?.())
     this.el.querySelector('#sp-survival').addEventListener('click', () =>
       this._showComingSoon('🏝️ Survival', 'Mode bertahan hidup lagi disusun. Sabar ya!', 'singleplayer-select')
@@ -351,6 +408,137 @@ export class PauseMenu {
     this.el.querySelector('#coming-soon-title').textContent = title
     this.el.querySelector('#coming-soon-desc').textContent = desc
     this._showView('coming-soon')
+  }
+
+  _createRoom() {
+    if (!this.multiplayer) return
+    this._mpInviteLoaded = false
+    this.multiplayer.createRoom()
+    this._showView('mp-room')
+    this._renderMpRoom()
+  }
+
+  _joinRoomByCode() {
+    if (!this.multiplayer) return
+    const input = this.el.querySelector('#mp-join-input')
+    const code = input.value.trim()
+    const err = this.el.querySelector('#mp-lobby-error')
+    if (!code) {
+      err.textContent = 'Masukkan kode room dulu ya.'
+      err.classList.remove('hidden')
+      return
+    }
+    err.classList.add('hidden')
+    this._mpInviteLoaded = false
+    this.multiplayer.joinRoom(code)
+    this._showView('mp-room')
+    this._renderMpRoom()
+  }
+
+  // Reached from a "🎮 Gabung Room" invite tapped in chat (see hud.js) —
+  // main.js calls this after already pausing/opening the menu.
+  openMultiplayerRoom() {
+    this._showView('mp-room')
+    this._renderMpRoom()
+  }
+
+  _selectMpMode(mode) {
+    if (!this.multiplayer?.isHost) return
+    if (mode === 'time') {
+      this.multiplayer.setMode('time', { minutes: 5 })
+    } else {
+      const target = FISH_TYPES.find((f) => !f.junk)
+      this.multiplayer.setMode('fish', { fishId: target.id, fishName: target.name })
+    }
+    this._renderMpRoom()
+  }
+
+  _renderMpRoom() {
+    const mp = this.multiplayer
+    if (!mp || !mp.inRoom) return
+
+    this.el.querySelector('#mp-room-code').textContent = `· ${mp.roomCode}`
+    const roster = mp.roster
+    this.el.querySelector('#mp-roster').innerHTML = roster.length
+      ? roster
+          .map(
+            (p) => `
+              <div class="mp-roster-row">
+                <span class="mp-roster-avatar">${escapeHtml(p.avatar || '🐟')}</span>
+                <span class="mp-roster-name">${escapeHtml(p.username || 'Pemain')}</span>
+                ${p.isHost ? '<span class="mp-host-badge">Host</span>' : ''}
+              </div>
+            `
+          )
+          .join('')
+      : '<p class="gallery-status">Menghubungkan...</p>'
+
+    const hostControls = this.el.querySelector('#mp-host-controls')
+    const startBtn = this.el.querySelector('#mp-start-btn')
+    const waitingMsg = this.el.querySelector('#mp-waiting-msg')
+    hostControls.classList.toggle('hidden', !mp.isHost)
+    startBtn.classList.toggle('hidden', !mp.isHost)
+    waitingMsg.classList.toggle('hidden', mp.isHost)
+
+    this.el.querySelectorAll('.mp-mode-btn').forEach((btn) => btn.classList.toggle('active', btn.dataset.mode === mp.mode))
+
+    const paramsEl = this.el.querySelector('#mp-mode-params')
+    if (mp.mode === 'time') {
+      paramsEl.innerHTML = [5, 10, 15]
+        .map((m) => `<button class="mp-param-btn ${mp.params?.minutes === m ? 'active' : ''}" data-minutes="${m}">${m} menit</button>`)
+        .join('')
+      paramsEl.querySelectorAll('[data-minutes]').forEach((btn) =>
+        btn.addEventListener('click', () => {
+          mp.setMode('time', { minutes: Number(btn.dataset.minutes) })
+          this._renderMpRoom()
+        })
+      )
+    } else if (mp.mode === 'fish') {
+      const targets = FISH_TYPES.filter((f) => !f.junk)
+      paramsEl.innerHTML = `
+        <div class="mp-fish-picker">
+          ${targets
+            .map((f) => `<button class="mp-fish-btn ${mp.params?.fishId === f.id ? 'active' : ''}" data-fish="${f.id}" title="${escapeHtml(f.name)}">${fishIconSVG(f, 26)}</button>`)
+            .join('')}
+        </div>
+        <div class="mp-fish-selected">${mp.params?.fishName ? `Target: ${escapeHtml(mp.params.fishName)}` : 'Pilih target ikan...'}</div>
+      `
+      paramsEl.querySelectorAll('[data-fish]').forEach((btn) =>
+        btn.addEventListener('click', () => {
+          const f = targets.find((x) => x.id === btn.dataset.fish)
+          mp.setMode('fish', { fishId: f.id, fishName: f.name })
+          this._renderMpRoom()
+        })
+      )
+    } else {
+      paramsEl.innerHTML = ''
+    }
+
+    startBtn.disabled = !mp.mode || (mp.mode === 'fish' && !mp.params?.fishId)
+
+    // Invite via chat — logged-in host only (guests have no friends list).
+    const inviteEl = this.el.querySelector('#mp-invite-list')
+    if (mp.isHost && this.userId) {
+      if (!this._mpInviteLoaded) {
+        this._mpInviteLoaded = true
+        fetchFriends(this.userId).then((friends) => {
+          inviteEl.innerHTML = friends.length
+            ? `<p class="mp-invite-label">Undang teman:</p>${friends
+                .map((f) => `<button class="mp-invite-btn" data-id="${f.friend_id}">+ ${escapeHtml(f.friend_name)}</button>`)
+                .join('')}`
+            : '<p class="mp-invite-label">Belum ada teman — bagikan kode room-nya langsung ya.</p>'
+          inviteEl.querySelectorAll('.mp-invite-btn').forEach((btn) =>
+            btn.addEventListener('click', () => {
+              this.onInviteFriend?.(btn.dataset.id, mp.roomCode)
+              btn.textContent = '✓ Diundang'
+              btn.disabled = true
+            })
+          )
+        })
+      }
+    } else {
+      inviteEl.innerHTML = ''
+    }
   }
 
   async _showLeaderboard(mode = 'alltime') {
@@ -925,6 +1113,7 @@ export class PauseMenu {
   open() {
     this._showView('main')
     this.el.classList.remove('hidden')
+    this.el.querySelector('#pause-leave-match').classList.toggle('hidden', !this.multiplayer?.matchActive)
   }
 
   close() {

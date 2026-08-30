@@ -16,6 +16,27 @@ let chatHandler = null
 // the caller to re-pass username/avatar every time.
 let trackedMeta = null
 
+// ---- Multiplayer room channel ----------------------------------------
+// A second, separate Realtime channel from the lobby one above — joined
+// only while a player is in (or waiting in) a multiplayer room. Same
+// ephemeral presence+broadcast approach, just scoped to `room:<code>`
+// instead of the shared "lobby" so room chatter/positions never leak to
+// players who aren't in that room.
+let roomChannel = null
+let roomPresenceState = {}
+let roomMeta = null
+let roomHandlers = {}
+
+// Avoids ambiguous characters (0/O, 1/I) so a spoken-aloud or handwritten
+// code is never misread.
+const ROOM_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+
+export function generateRoomCode() {
+  let code = ''
+  for (let i = 0; i < 5; i++) code += ROOM_CODE_CHARS[Math.floor(Math.random() * ROOM_CODE_CHARS.length)]
+  return code
+}
+
 // Reused as the quick-tap reaction row inside the chat panel (see hud.js) —
 // tapping one just sends its emoji as a normal chat message.
 export const EMOTES = [
@@ -101,11 +122,66 @@ export function onlineCount() {
 // everyone in the lobby sees it. A `toId` scopes it to a DM shown only in
 // that pair's thread (see hud.js's receiveChatMessage) — it's still sent
 // to the whole channel since there's no per-pair channel, just filtered
-// client-side on the way in.
-export function sendChat({ fromId, fromName, toId = null, text }) {
+// client-side on the way in. `invite` (optional) = { code } — stamps this
+// message as a multiplayer room invite so the receiving chat UI can render
+// a tappable "Gabung Room" button instead of/alongside the text.
+export function sendChat({ fromId, fromName, toId = null, text, invite = null }) {
   channel?.send({
     type: 'broadcast',
     event: 'chat',
-    payload: { fromId, fromName, toId, text, ts: Date.now() },
+    payload: { fromId, fromName, toId, text, invite, ts: Date.now() },
   })
+}
+
+// Joins (or re-joins) the Realtime channel for one multiplayer room.
+// `identity` = { id, username, avatar, cosmetics, isHost }. `handlers` =
+// { onPresence, onStart, onPos, onCatch, onEnd } — see game/multiplayer.js,
+// which owns all the actual game logic; this module is purely the wire.
+export function joinRoomChannel(code, identity, handlers = {}) {
+  if (!supabase) return
+  if (roomChannel) leaveRoomChannel() // safety net if a caller forgot to leave first
+  roomHandlers = handlers
+  roomMeta = {
+    username: identity.username,
+    avatar: identity.avatar,
+    isHost: Boolean(identity.isHost),
+    ...(identity.cosmetics ?? {}),
+  }
+
+  roomChannel = supabase.channel(`room:${code}`, {
+    config: { presence: { key: identity.id }, broadcast: { self: true } },
+  })
+
+  roomChannel.on('presence', { event: 'sync' }, () => {
+    roomPresenceState = roomChannel.presenceState()
+    roomHandlers.onPresence?.(getRoomPlayers())
+  })
+  roomChannel.on('broadcast', { event: 'start' }, ({ payload }) => roomHandlers.onStart?.(payload))
+  roomChannel.on('broadcast', { event: 'pos' }, ({ payload }) => roomHandlers.onPos?.(payload))
+  roomChannel.on('broadcast', { event: 'catch' }, ({ payload }) => roomHandlers.onCatch?.(payload))
+  roomChannel.on('broadcast', { event: 'end' }, ({ payload }) => roomHandlers.onEnd?.(payload))
+
+  roomChannel.subscribe(async (status) => {
+    if (status === 'SUBSCRIBED') await roomChannel.track(roomMeta)
+  })
+}
+
+export function leaveRoomChannel() {
+  if (roomChannel) {
+    roomChannel.unsubscribe()
+    roomChannel = null
+  }
+  roomPresenceState = {}
+  roomMeta = null
+  roomHandlers = {}
+}
+
+export function getRoomPlayers() {
+  return Object.entries(roomPresenceState).map(([id, metas]) => ({ id, ...(metas[0] ?? {}) }))
+}
+
+// event: 'pos' | 'catch' | 'end' — 'start' is only ever sent by the host,
+// via startMatch() in game/multiplayer.js, but routed the same way.
+export function broadcastRoom(event, payload) {
+  roomChannel?.send({ type: 'broadcast', event, payload })
 }

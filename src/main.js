@@ -42,6 +42,8 @@ import {
 import { hasSeenTutorial, showTutorial } from './tutorial.js'
 import { unlockAudio, playAchievement, playDailyReward } from './audio.js'
 import { connectLobby, sendChat, updatePresenceCosmetics } from './social.js'
+import { MultiplayerSession } from './game/multiplayer.js'
+import { showCountdown, hideCountdown, showMatchResults } from './multiplayer-ui.js'
 
 const app = document.querySelector('#app')
 
@@ -242,6 +244,19 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
 
   const dayNight = new DayNightCycle({ scene, sun, hemi, ambient, camera })
 
+  // ---- Multiplayer (Sub-tahap C: rooms, invites, live position sync) ----
+  // No dedicated game server exists — this rides the same Supabase
+  // Realtime broadcast/presence primitives as the lobby chat/presence
+  // above, just on a separate per-room channel (see social.js). The host's
+  // client is the de-facto timer/tie-break authority; see game/multiplayer.js
+  // for that tradeoff spelled out.
+  const multiplayer = new MultiplayerSession({
+    scene,
+    camera,
+    identity: { id: identityId, username, avatar },
+    getCosmetics: currentCosmeticsForPresence,
+  })
+
   // ---- Boat / open-sea zone ---------------------------------------------
   const BOARD_RADIUS = 4
   const DISEMBARK_RADIUS = 6
@@ -334,6 +349,7 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
         persistPoints()
       }
       checkAchievements()
+      multiplayer.registerCatch(fish)
       // NOTE: this used to force-exit pointer lock here so the (now
       // disabled) share button on the catch popup would be clickable. With
       // sharing off there's nothing on the popup to click, and releasing
@@ -384,16 +400,24 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
       else saveLocalAvatar(newAvatar)
     },
     getAchievementsState: () => ({ stats: currentAchievementStats(), claimedIds: claimedAchievementIds }),
-    onResume: () => {
-      unlockAudio()
-      if (touch) {
-        paused = false
-        pauseMenu.close()
-      } else {
-        player.controls.lock()
-      }
-    },
+    onResume: () => enterGame(),
+    multiplayer,
+    onInviteFriend: (friendId, code) =>
+      sendChat({ fromId: identityId, fromName: username, toId: friendId, text: `Ayo gabung room ${code}!`, invite: { code } }),
   })
+
+  // Shared by "▶ Main" (single player) and the multiplayer countdown
+  // finishing — both just mean "close the menu and put the player back in
+  // control of the camera/movement".
+  function enterGame() {
+    unlockAudio()
+    if (touch) {
+      paused = false
+      pauseMenu.close()
+    } else {
+      player.controls.lock()
+    }
+  }
 
   function openPause() {
     paused = true
@@ -401,6 +425,32 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
     pauseMenu.open()
     hud.hideInteractPrompt()
     if (document.pointerLockElement === renderer.domElement) document.exitPointerLock()
+  }
+
+  // ---- Multiplayer event wiring ----------------------------------------
+  multiplayer.onCountdown = (secondsLeft) => showCountdown(secondsLeft)
+  multiplayer.onMatchBegin = () => {
+    hideCountdown()
+    enterGame()
+  }
+  multiplayer.onMatchTick = (info) => hud.updateMpBanner(info)
+  multiplayer.onLeaveRoom = () => hud.hideMpBanner()
+  multiplayer.onMatchEnd = (payload) => {
+    hud.hideMpBanner()
+    openPause()
+    showMatchResults(payload, {
+      localId: identityId,
+      onClose: () => multiplayer.leaveRoom(),
+    })
+  }
+  // Tapping a "🎮 Gabung Room" invite in chat — pause (releasing pointer
+  // lock as needed), close the chat panel, join, and land straight on the
+  // room screen instead of the pause menu's main view.
+  hud.onJoinRoomInvite = (code) => {
+    hud.toggleChat(false)
+    openPause()
+    multiplayer.joinRoom(code)
+    pauseMenu.openMultiplayerRoom()
   }
 
   if (!touch) {
@@ -503,6 +553,10 @@ function startGame({ session, username, guest, totalPoints, wallet, avatar, inve
       dayNight.update(dt)
       updateInteractPrompt()
     }
+    // Remote-player interpolation and the match clock keep running in real
+    // time even while paused (same as it would for everyone else in the
+    // room) — only our own position broadcast pauses with everything else.
+    multiplayer.tick(dt, paused)
     hud.setTimeWeather(dayNight.getLabel())
 
     renderer.render(scene, camera)

@@ -1897,3 +1897,322 @@ html, body {
 #item-detail-equip-btn {
   margin-bottom: 10px;
 }
+
+/* ---------- Multiplayer: room lobby / roster (Sub-tahap C) ---------- */
+.mp-join-row {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.mp-join-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 14px;
+  text-transform: uppercase;
+}
+
+.mp-lobby-error {
+  color: #ff8a80;
+  font-size: 12px;
+  text-align: center;
+  margin: -4px 0 10px;
+}
+
+#pause-view-mp-room h3 {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+#mp-room-code {
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: #ffd479;
+}
+
+#mp-roster {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.mp-roster-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 13px;
+}
+
+.mp-roster-avatar {
+  font-size: 18px;
+}
+
+.mp-roster-name {
+  flex: 1;
+}
+
+.mp-host-badge {
+  font-size: 10px;
+  font-weight: 700;
+  color: #1a1a1a;
+  background: #ffd479;
+  border-radius: 5px;
+  padding: 2px 6px;
+}
+
+#mp-host-controls h4 {
+  margin: 4px 0 8px;
+  font-size: 13px;
+  color: #cfe3ee;
+}
+
+.mp-mode-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.mp-mode-btn {
+  flex: 1;
+  padding: 10px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.05);
+  color: #cfe3ee;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.mp-mode-btn.active {
+  background: rgba(55, 163, 224, 0.35);
+  border-color: #37a3e0;
+  color: #fff;
+}
+
+#mp-mode-params {
+  margin-bottom: 10px;
+}
+
+.mp-param-btn {
+  padding: 8px 12px;
+  margin: 0 6px 6px 0;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.05);
+  color: #cfe3ee;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.mp-param-btn.active {
+  background: rgba(55, 163, 224, 0.35);
+  border-color: #37a3e0;
+  color: #fff;
+}
+
+.mp-fish-picker {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.mp-fish-btn {
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+}
+
+.mp-fish-btn.active {
+  border-color: #37a3e0;
+  background: rgba(55, 163, 224, 0.3);
+}
+
+.mp-fish-selected {
+  font-size: 12px;
+  color: #ffd479;
+  margin-bottom: 8px;
+}
+
+.mp-invite-label {
+  font-size: 12px;
+  color: #b7cdd8;
+  margin: 6px 0;
+}
+
+.mp-invite-btn {
+  padding: 6px 10px;
+  margin: 0 6px 6px 0;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.05);
+  color: #cfe3ee;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.mp-invite-btn:disabled {
+  opacity: 0.6;
+}
+
+#mp-start-btn {
+  margin-top: 6px;
+}
+
+/* ---------- Multiplayer: in-game banner + chat invite chip ---------- */
+#mp-banner {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(10, 25, 35, 0.75);
+  border: 1px solid rgba(255, 212, 121, 0.4);
+  border-radius: 20px;
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffd479;
+  z-index: 10;
+}
+
+#mp-banner.hidden {
+  display: none;
+}
+
+.chat-invite-btn {
+  display: block;
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: none;
+  background: #37a3e0;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* ---------- Multiplayer: countdown + results overlays ---------- */
+.mp-countdown-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+  color: #fff;
+  font-size: 96px;
+  font-weight: 800;
+  text-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+  z-index: 92;
+  pointer-events: none;
+}
+
+.mp-results-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 96;
+  padding: 20px;
+}
+
+.mp-results-modal {
+  width: 360px;
+  max-width: 92vw;
+  max-height: 88vh;
+  overflow-y: auto;
+  background: rgba(10, 25, 35, 0.96);
+  border: 1px solid rgba(255, 212, 121, 0.4);
+  border-radius: 16px;
+  padding: 26px 22px 22px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+}
+
+.mp-results-icon {
+  font-size: 44px;
+}
+
+.mp-results-modal h3 {
+  margin: 8px 0 4px;
+  font-size: 20px;
+}
+
+.mp-results-sub {
+  color: #b7cdd8;
+  font-size: 13px;
+  margin: 0 0 14px;
+}
+
+.mp-results-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+  text-align: left;
+}
+
+.mp-result-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 12px;
+}
+
+.mp-result-row.winner {
+  background: rgba(255, 212, 121, 0.18);
+  border: 1px solid rgba(255, 212, 121, 0.5);
+}
+
+.mp-result-row.me .mp-result-name {
+  color: #ffd479;
+}
+
+.mp-result-rank {
+  width: 24px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.mp-result-name {
+  flex: 1;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mp-result-catches {
+  color: #b7cdd8;
+  flex-shrink: 0;
+}
+
+.mp-result-points {
+  font-weight: 700;
+  color: #7cfc9a;
+  flex-shrink: 0;
+}
+
+.mp-results-note {
+  font-size: 11px;
+  color: #8ba3ae;
+  margin-bottom: 14px;
+}

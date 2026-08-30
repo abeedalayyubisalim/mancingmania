@@ -14,6 +14,7 @@ export class Hud {
     this.username = ''
     root.innerHTML = `
       <div id="crosshair"></div>
+      <div id="mp-banner" class="hidden"></div>
       <div id="top-bar">
         <div id="score-box">🪙 <span id="score-value">0</span></div>
         <div id="level-box">⭐ Lv.<span id="level-value">1</span></div>
@@ -97,6 +98,7 @@ export class Hud {
     this.achievementToast = root.querySelector('#achievement-toast')
     this.timeWeatherEl = root.querySelector('#time-weather-box')
     this.interactPrompt = root.querySelector('#interact-prompt')
+    this.mpBanner = root.querySelector('#mp-banner')
 
     // ---- Chat --------------------------------------------------------
     this.chatPanel = root.querySelector('#chat-panel')
@@ -269,6 +271,25 @@ export class Hud {
     this._interactHandler = null
   }
 
+  // ---- Multiplayer match banner --------------------------------------
+  // Shows the live round state while a multiplayer match is running — a
+  // countdown for Mode Waktu, or the target species for Mode Jenis Ikan.
+  // Driven by MultiplayerSession.onMatchTick (see game/multiplayer.js).
+  updateMpBanner({ secondsLeft, fishName }) {
+    this.mpBanner.classList.remove('hidden')
+    if (typeof secondsLeft === 'number') {
+      const m = Math.floor(secondsLeft / 60)
+      const s = secondsLeft % 60
+      this.mpBanner.textContent = `⏱️ ${m}:${String(s).padStart(2, '0')} tersisa`
+    } else if (fishName) {
+      this.mpBanner.textContent = `🎯 Target: ${fishName}`
+    }
+  }
+
+  hideMpBanner() {
+    this.mpBanner.classList.add('hidden')
+  }
+
   // ---- Chat ----------------------------------------------------------
   // `identity` = { id, username, avatar } for the local player — needed to
   // tell "sent by me" apart from incoming messages, and as the `fromId`
@@ -332,6 +353,19 @@ export class Hud {
     const el = document.createElement('div')
     el.className = `chat-msg ${msg.mine ? 'mine' : ''}`
     el.innerHTML = `<span class="chat-msg-name">${escapeHtml(msg.mine ? 'Kamu' : msg.fromName || 'Pemain')}</span><span class="chat-msg-text">${escapeHtml(msg.text)}</span>`
+    // A room invite rides alongside a normal chat message — the sender
+    // still sees their own text bubble, but only the recipient gets the
+    // tappable join button (self:true echoes it back to the sender too).
+    if (msg.invite && !msg.mine) {
+      const btn = document.createElement('button')
+      btn.className = 'chat-invite-btn'
+      btn.textContent = `🎮 Gabung Room ${msg.invite.code}`
+      btn.addEventListener('click', () => {
+        playUIClick()
+        this.onJoinRoomInvite?.(msg.invite.code)
+      })
+      el.appendChild(btn)
+    }
     this.chatMessagesEl.appendChild(el)
     this.chatMessagesEl.scrollTop = this.chatMessagesEl.scrollHeight
   }
